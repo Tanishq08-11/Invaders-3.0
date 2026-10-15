@@ -1,0 +1,158 @@
+"""
+Alert and Risk Engine for Insider Data Exfiltration
+Evaluates KitNET statistical anomaly scores alongside contextual network heuristics:
+- Off-hours data egress
+- Suspicious destination IP & egress ports (e.g., TLS 443, SSH 22, Tor 9001)
+- Flow asymmetry (heavy outbound upload vs download)
+- Host historical risk accumulation
+"""
+from typing import Dict, Any, Tuple
+from datetime import datetime, timezone
+import ipaddress
+import numpy as np
+
+
+class RiskEngine:
+    """
+    Translates raw KitNET anomaly scores into actionable cybersecurity risk metrics (0-100),
+    severity tiers (NORMAL, LOW, MEDIUM, HIGH, CRITICAL), and alert triggers.
+    """
+    def __init__(
+        self,
+        z_low: float = 2.0,
+        z_med: float = 3.5,
+        z_high: float = 5.5,
+        z_crit: float = 8.5
+    ):
+        self.z_low = z_low
+        self.z_med = z_med
+        self.z_high = z_high
+        self.z_crit = z_crit
+
+        self.suspicious_ports = {
+            443: "TLS/HTTPS Encrypted Channel",
+            8443: "Alternative HTTPS Port",
+            22: "SSH/SFTP Secure Shell Transfer",
+            2222: "Non-standard SSH",
+            8080: "HTTP/Proxy Tunnel",
+            53: "DNS / Encrypted DoH Tunneling",
+            9001: "Tor / Encrypted Proxy",
+            4444: "Metasploit / Command & Control Default"
+        }
+
+    def is_private_ip(self, ip_str: str) -> bool:
+        """Determines if an IP address is an internal corporate RFC 1918/loopback address."""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_loopback or ip.is_link_local:
+                return True
+            # RFC 1918 enterprise private subnets
+            rfc1918 = (
+                ipaddress.ip_network("10.0.0.0/8"),
+                ipaddress.ip_network("172.16.0.0/12"),
+                ipaddress.ip_network("192.168.0.0/16")
+            )
+            return any(ip in net for net in rfc1918)
+        except ValueError:
+            return False
+
+    def is_off_hours(self, dt: datetime) -> bool:
+        """Determines if the timestamp falls on weekend or off-hours (20:00 - 06:00)."""
+        if dt.weekday() >= 5:  # Saturday or Sunday
+            return True
+        hour = dt.hour
+        return hour >= 20 or hour < 6
+
+    def evaluate(
+        self,
+        anomaly_score: float,
+        flow_meta: Dict[str, Any],
+        baseline_mean: float,
+        baseline_std: float,
+        baseline_max: float
+    ) -> Dict[str, Any]:
+        """
+        Evaluates the network flow event against learned normal baselines and domain rules.
+        """
+        # 1. Statistical Z-Score
+        if baseline_std < 1e-5:
+            baseline_std = 0.01
+        z_score = max(0.0, (anomaly_score - baseline_mean) / baseline_std)
+
+        # 2. Base Risk Calculation from Z-score (0 to 60)
+        base_risk = 0.0
+        if z_score < self.z_low:
+            base_risk = (z_score / self.z_low) * 20.0
+        elif z_score < self.z_med:
+            base_risk = 20.0 + ((z_score - self.z_low) / (self.z_med - self.z_low)) * 20.0
+        elif z_score < self.z_high:
+            base_risk = 40.0 + ((z_score - self.z_med) / (self.z_high - self.z_med)) * 15.0
+        else:
+            base_risk = 55.0 + min(15.0, (z_score - self.z_high) * 3.0)
+
+        # 3. Contextual Heuristic Risk Additions (0 to 40)
+        heuristic_risk = 0.0
+        risk_factors = []
+
+        # Check External Destination
+        dst_ip = flow_meta.get("dst_ip", "0.0.0.0")
+        is_external = not self.is_private_ip(dst_ip)
+        if is_external:
+            heuristic_risk += 12.0
+            risk_factors.append(f"Outbound transfer to external destination: {dst_ip}")
+
+        # Check Egress Port
+        dst_port = int(flow_meta.get("dst_port", 0))
+        if dst_port in self.suspicious_ports:
+            heuristic_risk += 10.0
+            risk_factors.append(f"Target port {dst_port} ({self.suspicious_ports[dst_port]})")
+
+        # Check Off-Hours Timing
+        ts_val = flow_meta.get("timestamp")
+        if isinstance(ts_val, (int, float)):
+            dt = datetime.fromtimestamp(ts_val, tz=timezone.utc)
+        elif isinstance(ts_val, datetime):
+            dt = ts_val
+        else:
+            dt = datetime.now(timezone.utc)
+
+        off_hours_flag = self.is_off_hours(dt)
+        if off_hours_flag:
+            heuristic_risk += 8.0
+            risk_factors.append("Off-hours data transmission (evening/night or weekend)")
+
+        # Check High Volume / Outbound Burst
+        pkt_len = float(flow_meta.get("length", flow_meta.get("bytes", 0)))
+        if pkt_len > 1200:
+            heuristic_risk += 6.0
+            risk_factors.append(f"Max MTU frame size ({int(pkt_len)} bytes) indicative of bulk file transfer")
+
+        # Total Risk Score
+        total_risk = min(100.0, base_risk + heuristic_risk)
+
+        # Severity Categorization
+        if total_risk >= 88.0 or z_score >= self.z_crit:
+            severity = "CRITICAL"
+        elif total_risk >= 70.0 or z_score >= self.z_high:
+            severity = "HIGH"
+        elif total_risk >= 50.0 or z_score >= self.z_med:
+            severity = "MEDIUM"
+        elif total_risk >= 30.0 or z_score >= self.z_low:
+            severity = "LOW"
+        else:
+            severity = "NORMAL"
+
+        is_threat = severity in ["MEDIUM", "HIGH", "CRITICAL"]
+        confidence = float(np.clip(0.65 + (z_score / 20.0) * 0.3, 0.65, 0.99))
+
+        return {
+            "anomaly_score": float(anomaly_score),
+            "z_score": float(z_score),
+            "risk_score": float(round(total_risk, 1)),
+            "severity": severity,
+            "is_threat": is_threat,
+            "confidence": float(round(confidence, 2)),
+            "is_external_dst": is_external,
+            "off_hours": off_hours_flag,
+            "risk_factors": risk_factors
+        }

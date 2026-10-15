@@ -1,0 +1,132 @@
+"""
+Model Management API Blueprint
+Provides endpoints to inspect KitNET model state, trigger baseline training,
+fine-tune detection thresholds, and explore feature clusters.
+"""
+import os
+from flask import Blueprint, request, jsonify
+from config import Config
+from core.models_db import ModelBaseline
+from services.detection_service import DetectionService
+from services.training_service import TrainingService
+
+bp_model = Blueprint("model", __name__, url_prefix="/api/v1/model")
+
+
+@bp_model.route("/status", methods=["GET"])
+def model_status():
+    """Inspects the active KitNET detector and baseline parameters."""
+    detection_svc = DetectionService.get_instance()
+    kitnet = detection_svc.kitnet
+    active_baseline = ModelBaseline.query.filter_by(is_active=True).first()
+
+    return jsonify({
+        "is_model_loaded": detection_svc.is_model_loaded,
+        "phase": kitnet.phase,
+        "input_dimension": kitnet.input_dim,
+        "num_clusters": len(kitnet.clusters),
+        "cluster_sizes": [len(c) for c in kitnet.clusters],
+        "baseline_mean_error": round(kitnet.baseline_mean, 5),
+        "baseline_std_error": round(kitnet.baseline_std, 5),
+        "baseline_max_error": round(kitnet.baseline_max, 5),
+        "active_baseline_meta": active_baseline.to_dict() if active_baseline else None,
+        "thresholds": {
+            "z_low": detection_svc.risk_engine.z_low,
+            "z_med": detection_svc.risk_engine.z_med,
+            "z_high": detection_svc.risk_engine.z_high,
+            "z_crit": detection_svc.risk_engine.z_crit
+        }
+    })
+
+
+@bp_model.route("/train", methods=["POST"])
+def trigger_training():
+    """
+    Triggers baseline training on BoT-IoT normal dataset (or custom uploaded CSV).
+    Workflow: Normal Traffic -> Kitsune AfterImage Extractor -> KitNET Training -> Baseline Calibration.
+    """
+    data = request.get_json() or {}
+    dataset_name = data.get("dataset_name", "botiot_normal_train.csv")
+    csv_path = os.path.join(Config.DATA_DIR, dataset_name)
+    epochs = int(data.get("epochs", 1))
+    max_rows = data.get("max_rows")
+    if max_rows is not None:
+        max_rows = int(max_rows)
+
+    if not os.path.exists(csv_path):
+        return jsonify({"error": f"Training dataset not found: {csv_path}"}), 404
+
+    trainer = TrainingService()
+    try:
+        train_result = trainer.train_baseline_from_csv(
+            csv_path=csv_path,
+            epochs=epochs,
+            max_rows=max_rows
+        )
+        # Reload model into detection service
+        detection_svc = DetectionService.get_instance()
+        detection_svc.reload_model()
+
+        return jsonify({
+            "message": "KitNET baseline successfully trained and calibrated!",
+            "details": train_result
+        })
+    except Exception as e:
+        return jsonify({"error": f"Training failed: {str(e)}"}), 500
+
+
+@bp_model.route("/thresholds", methods=["POST"])
+def update_thresholds():
+    """Dynamically updates risk engine sensitivity thresholds."""
+    data = request.get_json() or {}
+    risk_engine = DetectionService.get_instance().risk_engine
+
+    if "z_low" in data:
+        risk_engine.z_low = float(data["z_low"])
+    if "z_med" in data:
+        risk_engine.z_med = float(data["z_med"])
+    if "z_high" in data:
+        risk_engine.z_high = float(data["z_high"])
+    if "z_crit" in data:
+        risk_engine.z_crit = float(data["z_crit"])
+
+    return jsonify({
+        "message": "Detection thresholds updated successfully",
+        "thresholds": {
+            "z_low": risk_engine.z_low,
+            "z_med": risk_engine.z_med,
+            "z_high": risk_engine.z_high,
+            "z_crit": risk_engine.z_crit
+        }
+    })
+
+
+@bp_model.route("/features", methods=["GET"])
+def list_features():
+    """Returns the 100 AfterImage feature catalog and active cluster mappings."""
+    detection_svc = DetectionService.get_instance()
+    feature_names = detection_svc.extractor.get_feature_names()
+    clusters = detection_svc.kitnet.clusters
+
+    # Map feature index to cluster index
+    cluster_lookup = {}
+    for c_idx, cluster in enumerate(clusters):
+        for f_idx in cluster:
+            cluster_lookup[f_idx] = c_idx
+
+    feature_list = []
+    for idx, name in enumerate(feature_names):
+        info = detection_svc.explanation_engine._lookup_feature_info(name)
+        feature_list.append({
+            "index": idx,
+            "name": name,
+            "display_name": info["display"],
+            "cluster_id": cluster_lookup.get(idx, 0),
+            "description": info["desc"]
+        })
+
+    return jsonify({
+        "total_features": len(feature_list),
+        "total_clusters": len(clusters),
+        "features": feature_list
+    })
