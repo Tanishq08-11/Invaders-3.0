@@ -6,6 +6,40 @@ Powered by **Live Network Metadata Sniffing**, **Kitsune's AfterImage Feature Ex
 
 ---
 
+## 0. Running the Full Stack (Backend + VEYLIX Dashboard)
+
+The VEYLIX frontend (React + Vite) lives in [`frontend/`](frontend/) and talks to this backend on the same origin.
+
+```bash
+# 1. Backend
+pip install -r requirements.txt
+python app.py                       # http://localhost:5000
+
+# 2a. Production-style: build once, Flask serves the UI
+cd frontend && npm install && npm run build
+#     → open http://localhost:5000
+
+# 2b. Frontend development (hot reload; /api is proxied to :5000)
+cd frontend && npm run dev          # → open http://localhost:5173
+```
+
+**Portal accounts** live in a separate users database (`instance/veylix_users.db`, override with
+`AUTH_DATABASE_URL`). On first start, when it is empty, 20 worker accounts and 2 analyst accounts are created,
+each with its own random password. Only scrypt hashes are stored; the generated credentials are written once to
+`instance/worker_credentials.csv` (gitignored). Delete both files and restart to issue a fresh set.
+
+| Role | Usernames | Lands on |
+| :--- | :--- | :--- |
+| `EMPLOYEE` (20 workers) | `eng01`–`eng04`, `fin01`–`fin04`, `hr01`–`hr04`, `sales01`–`sales04`, `mgmt01`–`mgmt04` | `/employee/dashboard` — file portal |
+| `SECURITY_ANALYST` | `analyst01`, `analyst02` | `/soc` — alerts, incidents, device timelines |
+
+To populate the SOC with data, start the BoT-IoT replay (`POST /api/v1/stream/start` as an analyst) or the live
+collector (`POST /api/v1/collector/start`). Auth model: an HttpOnly session cookie; every SOC route requires a
+`SECURITY_ANALYST` session, file routes require `EMPLOYEE`, `/api/v1/health` and `POST /api/v1/events`
+(ingestion) remain open.
+
+---
+
 ## 1. Architectural Workflow
 
 ```
@@ -206,7 +240,13 @@ d:\invaders 3.0\
 │   ├── training_service.py     # BoT-IoT normal data training & ModelVersion recording
 │   └── simulation_service.py   # Background live traffic replay routed through EventProcessor
 │
+├── frontend/                   # VEYLIX React dashboard (SOC + employee portal); see frontend/README.md
+│
+├── core/auth.py                # Session helpers, SOC role guard, demo account seeding
+│
 ├── api/
+│   ├── routes_auth.py          # POST /api/v1/auth/login|logout, GET /api/v1/auth/me
+│   ├── routes_files.py         # /api/v1/files (list, upload, download, activity), GET /api/v1/employees/me
 │   ├── routes_events.py        # POST /api/v1/events (single & batch ingestion)
 │   ├── routes_alerts.py        # GET/PATCH /api/v1/alerts & /alerts/{id} (filters, evidence, audit)
 │   ├── routes_devices.py       # GET /api/v1/devices/{id}/timeline, GET /devices, POST flag
@@ -226,6 +266,7 @@ d:\invaders 3.0\
 │   └── botiot_attack_test.csv  # Labeled testing stream with insider exfiltration attacks
 │
 └── tests/
+    ├── test_auth_and_files.py  # Login/session, role isolation, file portal, dashboard contract fields
     ├── test_integration.py     # Person 4 Definition of Done end-to-end integration test suite
     ├── test_collector.py       # Live network collector & metadata extraction tests
     ├── test_errors_and_resilience.py # Error handling, malformed packets, and recovery tests
@@ -255,6 +296,14 @@ d:\invaders 3.0\
 | **`bp_metrics`** | `/api/v1/metrics` | `GET /` | Operational metrics, collector telemetry, precision estimates |
 | **`bp_health`** | `/api/v1/health` | `GET /` | Live database ping query, collector mode, model availability |
 | **`bp_stream`** | `/api/v1/stream` | `GET /live`, `POST /start`, `/pause`, `/resume`, `/stop` | Server-Sent Events (SSE) feed and simulation replay |
+| **`bp_auth`** | `/api/v1/auth` | `POST /login`, `GET /me`, `POST /logout` | Portal sessions (HttpOnly cookie) |
+| **`bp_files`** | `/api/v1/files` | `GET /?folder_id=`, `POST /`, `GET /<id>/download`, `GET /activity` | Employee file portal (EMPLOYEE role) |
+| **`bp_employees`** | `/api/v1/employees` | `GET /me` | Signed-in user profile and storage usage |
+
+SOC responses also carry the dashboard contract fields defined in `frontend/src/api/schemas.ts`
+(`items`, `device_id`, `destination`, `signals`, `risk_contributions`, `events`, `traffic_trend`, …) alongside the
+original fields. `PATCH /alerts/{id}` additionally accepts the dashboard vocabulary: `new` → `open`,
+`false_positive` → `dismissed` + disposition `false_positive`, and `note` → `analyst_notes`.
 
 > **Note on Unregistered Routes**: `routes_detection.py`, `routes_hosts.py`, and `routes_stats.py` were early prototypes that queried `core/models_db.py`. They are intentionally omitted from registration to prevent route duplication and avoid querying unpopulated tables.
 
@@ -267,11 +316,16 @@ Settings in [config.py](file:///d:/invaders%203.0/config.py) configurable via en
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
 | `FLASK_DEBUG` | `False` | Enables Flask debug mode (defaults to `False` for production security). |
-| `SECRET_KEY` | `insider-threat-ai-secret-key-2026` | Flask cryptographic session key. |
+| `SECRET_KEY` | random, kept in `instance/.secret_key` | Signs the portal session cookie. Set explicitly when running several instances. |
 | `DATABASE_URL` | `sqlite:///instance/insider_threat.db` | PostgreSQL connection string or local SQLite fallback. |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated list for restricted environments). |
 | `MAX_CONTENT_LENGTH` | `104857600` (100 MB) | Maximum allowable payload size for file uploads. |
 | `MAX_PCAP_PACKETS` | `50000` | Upper limit on packet processing for PCAP uploads. |
+| `SOC_AUTH_REQUIRED` | `True` | Require a `SECURITY_ANALYST` session on SOC routes. |
+| `AUTH_DATABASE_URL` | `sqlite:///instance/veylix_users.db` | Users + employee file portal database. |
+| `SEED_DEMO_USERS` | `True` | Create the 20 worker + 2 analyst accounts when the users database is empty. |
+| `SESSION_COOKIE_SECURE` | `False` | Set `True` when served over HTTPS. |
+| `SESSION_HOURS` | `8` | Session lifetime. |
 
 ---
 

@@ -10,12 +10,45 @@ Returns two categories of metrics:
    and, when analyst dispositions are available, precision / false-positive
    rate estimates.
 """
+from datetime import datetime, timedelta, timezone
+
 from flask import Blueprint, jsonify
 from sqlalchemy import func
-from core.models import Alert, Event, Device, ModelVersion
+from core.data_source import current_data_source
+from core.models import Alert, Event, Device, ModelVersion, iso_utc
 from services.event_processor import EventProcessor
 
 bp_metrics = Blueprint("metrics", __name__, url_prefix="/api/v1/metrics")
+
+TREND_EVENTS = 5000   # most recent events summarised into the traffic trend
+TREND_BUCKETS = 24
+
+
+def _traffic_trend():
+    """Outbound bytes, event count and alert-raising events over the recent event window."""
+    rows = (
+        Event.query
+        .with_entities(Event.received_at, Event.bytes_transferred, Event.alert_id)
+        .order_by(Event.received_at.desc())
+        .limit(TREND_EVENTS)
+        .all()
+    )
+    rows = [r for r in rows if r.received_at is not None]
+    if not rows:
+        return []
+    start = min(r.received_at for r in rows)
+    span = max((max(r.received_at for r in rows) - start).total_seconds(), 60.0)
+    width = span / TREND_BUCKETS
+    buckets = [{"bytes_out": 0, "events": 0, "anomalies": 0} for _ in range(TREND_BUCKETS)]
+    for r in rows:
+        i = min(int((r.received_at - start).total_seconds() / width), TREND_BUCKETS - 1)
+        buckets[i]["bytes_out"] += r.bytes_transferred or 0
+        buckets[i]["events"] += 1
+        buckets[i]["anomalies"] += 1 if r.alert_id else 0
+    return [
+        {"timestamp": iso_utc(start + timedelta(seconds=i * width)), **b}
+        for i, b in enumerate(buckets)
+    ]
 
 
 @bp_metrics.route("", methods=["GET"])
@@ -53,7 +86,7 @@ def get_metrics():
         .group_by(Alert.severity)
         .all()
     )
-    severity_dist = {sev: cnt for sev, cnt in severity_rows}
+    severity_dist = {str(sev).lower(): cnt for sev, cnt in severity_rows}
 
     # --- analyst disposition distribution (for precision estimates) ---
     disp_rows = (
@@ -119,4 +152,15 @@ def get_metrics():
         "evaluation":  evaluation,
         "severity_distribution": severity_dist,
         "devices":     device_summary,
+        # Dashboard KPI contract
+        "monitored_devices":    device_summary["total_tracked"],
+        "observed_events":      db_events_total,
+        "open_incidents":       Alert.query.filter(Alert.status.in_(("open", "investigating"))).count(),
+        "high_priority_alerts": Alert.query.filter(
+            Alert.status.in_(("open", "investigating")),
+            Alert.severity.in_(("HIGH", "CRITICAL")),
+        ).count(),
+        "traffic_trend": _traffic_trend(),
+        "data_source":   current_data_source(),
+        "generated_at":  iso_utc(datetime.now(timezone.utc)),
     })

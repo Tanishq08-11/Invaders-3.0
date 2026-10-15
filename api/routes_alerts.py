@@ -6,6 +6,7 @@ PATCH /api/v1/alerts/{id}    — update the analyst's disposition or status.
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from core.database import db
+from core.auth import current_user
 from core.models import Alert, AnalystAction, Event
 
 bp_alerts = Blueprint("alerts", __name__, url_prefix="/api/v1/alerts")
@@ -24,7 +25,7 @@ def list_alerts():
       status     – filter by lifecycle status (open, investigating, resolved, …)
       src_ip     – partial match on source IP
       page       – page number (default 1)
-      per_page   – items per page (default 20, max 100)
+      per_page   – items per page (default 20, max 1000)
       sort       – field to sort by (default: created_at)
       order      – asc | desc (default: desc)
     """
@@ -32,7 +33,7 @@ def list_alerts():
     status    = request.args.get("status")
     src_ip    = request.args.get("src_ip")
     page      = max(1, int(request.args.get("page", 1)))
-    per_page  = min(100, max(1, int(request.args.get("per_page", 20))))
+    per_page  = min(1000, max(1, int(request.args.get("per_page", 20))))
     sort_field = request.args.get("sort", "created_at")
     order     = request.args.get("order", "desc").lower()
 
@@ -54,12 +55,14 @@ def list_alerts():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+    summaries = [a.to_summary() for a in pagination.items]
     return jsonify({
         "total":    pagination.total,
         "page":     pagination.page,
         "pages":    pagination.pages,
         "per_page": pagination.per_page,
-        "alerts":   [a.to_summary() for a in pagination.items],
+        "alerts":   summaries,
+        "items":    summaries,  # dashboard contract
     })
 
 
@@ -103,6 +106,7 @@ def get_alert(identifier: str):
 
     payload = alert.to_dict()
     payload["source_events"] = source_events
+    payload["events"] = source_events  # dashboard contract
     payload["analyst_actions"] = actions
     return jsonify(payload)
 
@@ -117,22 +121,36 @@ def update_alert(identifier: str):
 
     Accepted body fields:
       status      – open | investigating | resolved | dismissed
+                    (dashboard aliases: new → open, false_positive → dismissed
+                     with disposition false_positive)
       disposition – true_positive | false_positive | benign | inconclusive
-      analyst_notes – free-text investigation notes
+      analyst_notes – free-text investigation notes (alias: note)
       analyst     – name or ID of the analyst making the change
+                    (defaults to the signed-in user)
     """
     alert = _resolve_alert(identifier)
     if alert is None:
         return jsonify({"error": f"Alert '{identifier}' not found"}), 404
 
-    data = request.get_json(silent=True) or {}
-    analyst_name = data.get("analyst", "anonymous")
+    data = dict(request.get_json(silent=True) or {})
+    user = current_user()
+    analyst_name = data.get("analyst") or (user.username if user else "anonymous")
     now = datetime.now(timezone.utc)
     changes = []
 
+    if "note" in data and "analyst_notes" not in data:
+        data["analyst_notes"] = data["note"]
+    if isinstance(data.get("status"), str):
+        raw_status = data["status"].strip().lower()
+        if raw_status == "new":
+            data["status"] = "open"
+        elif raw_status == "false_positive":
+            data["status"] = "dismissed"
+            data.setdefault("disposition", "false_positive")
+
     # --- status ---
     if "status" in data:
-        new_status = data["status"].lower()
+        new_status = str(data["status"]).lower()
         valid = ("open", "investigating", "resolved", "dismissed")
         if new_status not in valid:
             return jsonify({"error": f"Invalid status '{new_status}'. Must be one of {valid}"}), 400
@@ -174,7 +192,7 @@ def update_alert(identifier: str):
                 proc.false_positives += 1
 
     # --- analyst notes ---
-    if "analyst_notes" in data:
+    if "analyst_notes" in data and (data["analyst_notes"] or "") != (alert.analyst_notes or ""):
         old_notes = alert.analyst_notes or ""
         alert.analyst_notes = data["analyst_notes"]
         changes.append(AnalystAction(

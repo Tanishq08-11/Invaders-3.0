@@ -15,11 +15,14 @@ Database: PostgreSQL via DATABASE_URL env var, falls back to SQLite for dev.
 AI integration: imports the detector module — never duplicates calculations.
 """
 import os
-from flask import Flask
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 from config import Config
+from core.auth import install_soc_guard, seed_accounts
 from core.database import db
+import core.models  # noqa: F401  — registers every table (incl. users/files) before create_all
 
 # Blueprints
 from api.routes_events  import bp_events
@@ -31,6 +34,8 @@ from api.routes_stream  import bp_stream
 from api.routes_model   import bp_model
 from api.routes_dataset import bp_dataset
 from api.routes_collector import bp_collector
+from api.routes_auth    import bp_auth
+from api.routes_files   import bp_files, bp_employees
 
 from services.event_processor import EventProcessor
 from services.training_service import TrainingService
@@ -39,15 +44,23 @@ from services.training_service import TrainingService
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    if app.config.get("TESTING"):
+        # Tests never touch the real users database.
+        app.config["SQLALCHEMY_BINDS"] = {"auth": "sqlite:///:memory:"}
 
     # CORS for Security Dashboard frontend (configurable via CORS_ORIGINS)
     cors_origins = app.config.get("CORS_ORIGINS", "*")
     if isinstance(cors_origins, str) and "," in cors_origins:
         cors_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
-    CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+    # Credentials (session cookie) are only allowed with an explicit origin list, never "*".
+    CORS(app, resources={r"/api/*": {"origins": cors_origins}},
+         supports_credentials=cors_origins != "*")
 
     # Database
     db.init_app(app)
+
+    # Portal auth: SECURITY_ANALYST session required on every SOC route
+    install_soc_guard(app)
 
     # ------------------------------------------------------------------
     # Canonical Person 4 Route Registration
@@ -68,18 +81,48 @@ def create_app(config_class=Config):
     app.register_blueprint(bp_model)      # GET/POST /api/v1/model (train, status, thresholds, verify)
     app.register_blueprint(bp_dataset)    # GET/POST /api/v1/dataset (info, sample, upload)
     app.register_blueprint(bp_collector)  # GET/POST /api/v1/collector (live capture, pcap, status)
+    app.register_blueprint(bp_auth)       # POST /api/v1/auth/login|logout, GET /api/v1/auth/me
+    app.register_blueprint(bp_files)      # /api/v1/files (employee portal)
+    app.register_blueprint(bp_employees)  # GET /api/v1/employees/me
 
-    # Root redirect to health
-    @app.route("/", methods=["GET"])
-    def root():
-        from flask import redirect
-        return redirect("/api/v1/health")
+    # JSON errors on /api so the dashboard can show `detail` (e.g. 413 upload too large)
+    @app.errorhandler(HTTPException)
+    def _http_error(err):
+        if request.path.startswith("/api/"):
+            return jsonify({"detail": err.description, "error": err.name}), err.code
+        return err
+
+    # ------------------------------------------------------------------
+    # Frontend: serve the built SPA (frontend/dist) when present;
+    # otherwise "/" redirects to the health check as before.
+    # ------------------------------------------------------------------
+    dist = app.config.get("FRONTEND_DIST")
+
+    @app.route("/", defaults={"path": ""}, methods=["GET"])
+    @app.route("/<path:path>", methods=["GET"])
+    def frontend(path: str):
+        from flask import abort, redirect
+        if path.startswith("api/"):
+            abort(404)
+        if not dist or not os.path.isfile(os.path.join(dist, "index.html")):
+            if path == "":
+                return redirect("/api/v1/health")
+            abort(404)
+        if path and os.path.isfile(os.path.join(dist, path)):
+            return send_from_directory(dist, path)
+        return send_from_directory(dist, "index.html")  # client-side routes
 
     # ------------------------------------------------------------------
     # Bootstrap: create tables + train baseline if first run
     # ------------------------------------------------------------------
     with app.app_context():
         db.create_all()
+
+        if app.config.get("SEED_DEMO_USERS") and not app.config.get("TESTING"):
+            created = seed_accounts(app.config["CREDENTIALS_FILE"])
+            if created:
+                print(f"[Bootstrap] Created {len(created)} portal accounts in the users database. "
+                      f"Credentials written to {app.config['CREDENTIALS_FILE']}")
 
         checkpoint = os.path.join(Config.CHECKPOINTS_DIR, "kitnet_baseline.pkl")
         normal_csv = os.path.join(Config.DATA_DIR, "botiot_normal_train.csv")
@@ -129,5 +172,11 @@ if __name__ == "__main__":
     print(f"  GET  /api/v1/health              Service health check")
     print(f"  GET  /api/v1/stream/live         SSE real-time feed")
     print(f"  GET/POST /api/v1/collector/*     Live network metadata capture")
+    print(f"  POST /api/v1/auth/login|logout   Portal sessions (GET /auth/me)")
+    print(f"  /api/v1/files, /employees/me     Employee file portal")
+    if os.path.isfile(os.path.join(Config.FRONTEND_DIST, "index.html")):
+        print(f"  Dashboard UI                     http://localhost:{port}/")
+    else:
+        print(f"  Dashboard UI                     not built — run: cd frontend && npm run build")
     print(f"{'='*66}\n")
     app.run(host="0.0.0.0", port=port, debug=Config.DEBUG, threaded=True)

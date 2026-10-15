@@ -11,7 +11,8 @@ from flask import Blueprint, jsonify
 from core.database import db
 from services.event_processor import EventProcessor
 from services.live_collector import LiveCollector
-from core.models import ModelVersion
+from core.data_source import current_data_source
+from core.models import Event, ModelVersion, iso_utc
 
 bp_health = Blueprint("health", __name__, url_prefix="/api/v1")
 
@@ -42,9 +43,11 @@ def health_check():
         overall = "healthy"
 
     active_model = None
+    last_event_at = None
     if db_status == "connected":
         try:
             active_model = ModelVersion.query.filter_by(is_active=True).first()
+            last_event_at = iso_utc(db.session.query(db.func.max(Event.received_at)).scalar())
         except Exception:
             pass
 
@@ -79,4 +82,11 @@ def health_check():
             "events_ingested":  proc.events_ingested,
             "alerts_created":   proc.alerts_created,
         },
+        # Dashboard contract
+        "model_loaded":  proc.model_loaded,
+        "model_version": active_model.version if active_model else None,
+        "database":      db_status,
+        "ingestion":     c_status["mode"] if collector.is_running else "idle",
+        "last_event_at": last_event_at,
+        "data_source":   current_data_source(),
     })
