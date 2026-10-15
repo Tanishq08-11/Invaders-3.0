@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { SocShell } from '@/components/layout/SocShell'
 import { EmployeeShell } from '@/components/layout/EmployeeShell'
 import { RequireRole } from '@/auth/guards'
+import { SOC_ROLES } from '@/auth/auth.types'
 import { useAuth } from '@/auth/AuthProvider'
 import { homeFor, routes } from '@/lib/routes'
 import LandingPage from '@/features/landing/LandingPage'
@@ -18,13 +19,15 @@ export const router = createBrowserRouter([
   { path: '/', element: <Root /> },
   { path: routes.login, lazy: () => import('@/features/auth/LoginPage').then((m) => ({ Component: m.LoginPage })) },
   {
-    element: <RequireRole role="SECURITY_ANALYST" />,
+    element: <RequireRole role={SOC_ROLES} />,
     children: [
       {
         element: <SocShell />,
         children: [
           { path: routes.soc.overview, lazy: () => import('@/features/soc/OverviewPage').then((m) => ({ Component: m.SocOverviewPage })) },
           { path: routes.soc.alerts, lazy: () => import('@/features/soc/AlertCenterPage').then((m) => ({ Component: m.AlertCenterPage })) },
+          { path: routes.soc.events, lazy: () => import('@/features/soc/EventLogPage').then((m) => ({ Component: m.EventLogPage })) },
+          { path: routes.soc.collector, lazy: () => import('@/features/soc/CollectorPage').then((m) => ({ Component: m.CollectorPage })) },
           { path: '/soc/alerts/:alertId', lazy: () => import('@/features/soc/IncidentPage').then((m) => ({ Component: m.IncidentPage })) },
           { path: '/soc/devices/:deviceId', lazy: () => import('@/features/soc/DevicePage').then((m) => ({ Component: m.DevicePage })) },
         ],

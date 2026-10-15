@@ -22,7 +22,6 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from services.live_collector import LiveCollector
-from services.event_processor import EventProcessor
 
 
 def main():
@@ -36,7 +35,11 @@ def main():
     parser.add_argument("--duration", type=int, default=0, help="Run duration in seconds (0 = run indefinitely)")
 
     args = parser.parse_args()
+    # Bind to the real application so events are stored exactly as through the API.
+    from app import create_app
+    flask_app = create_app()
     collector = LiveCollector.get_instance()
+    collector.init_app(flask_app)
 
     # 1. List interfaces
     if args.list_interfaces:
@@ -44,7 +47,8 @@ def main():
         print(f"\nAvailable Network Interfaces ({len(ifaces)}):")
         print("-" * 50)
         for iface in ifaces:
-            print(f"  • {iface}")
+            note = "" if iface["allowed"] else "  (not in COLLECTOR_ALLOWED_INTERFACES)"
+            print(f"  • {iface['name']}  —  {iface['description']}  {', '.join(iface['ips'])}{note}")
         print("-" * 50)
         return
 
@@ -54,7 +58,8 @@ def main():
             print(f"[Error] PCAP file not found: {args.pcap}", file=sys.stderr)
             sys.exit(1)
         print(f"\n[Collector] Processing PCAP: {args.pcap} ...")
-        res = collector.process_pcap_file(args.pcap)
+        with flask_app.app_context():
+            res = collector.process_pcap_file(args.pcap)
         print(f"[Collector] PCAP Processing Complete:")
         print(json.dumps(res, indent=2))
         return

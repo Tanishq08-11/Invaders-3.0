@@ -160,9 +160,23 @@ export function SocOverviewPage() {
               <dl className="space-y-3 text-sm">
                 {[
                   ['Service', health.data?.status],
-                  ['Detection model', health.data?.model_loaded == null ? null : health.data.model_loaded ? 'Loaded' : 'Not loaded'],
+                  [
+                    'Detection model',
+                    health.data?.detector
+                      ? health.data.detector.available
+                        ? `Ready${health.data.detector.final_model === false ? ' (baseline, not final model)' : ''}`
+                        : health.data.detector.state === 'disabled'
+                          ? 'Disabled - events not scored'
+                          : 'Unavailable - events not scored'
+                      : health.data?.model_loaded == null
+                        ? null
+                        : health.data.model_loaded
+                          ? 'Loaded'
+                          : 'Not loaded',
+                  ],
                   ['Model version', health.data?.model_version],
                   ['Database', health.data?.database],
+                  ['Collector', health.data?.collector?.mode ?? health.data?.components?.collector],
                   ['Ingestion', health.data?.ingestion],
                   ['Last event', health.data?.last_event_at ? formatDateTime(health.data.last_event_at) : null],
                 ].map(([k, v]) => (

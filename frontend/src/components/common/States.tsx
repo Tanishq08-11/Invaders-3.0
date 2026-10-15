@@ -50,8 +50,8 @@ export function ErrorState({ error, onRetry, compact }: { error: unknown; onRetr
             compact={compact}
             tone="warning"
             icon={<PlugZap className="size-5" />}
-            title="Awaiting backend connection"
-            description="No backend URL is configured. Set VITE_API_BASE_URL to connect to the detection service."
+            title="Backend URL misconfigured"
+            description={`${error.message} Set VITE_API_BASE_URL to "/" (same origin) or an http(s):// URL and rebuild.`}
           />
         )
       case 'network':

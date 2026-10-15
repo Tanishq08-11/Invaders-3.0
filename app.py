@@ -2,7 +2,8 @@
 Flask Application — Person 4 Backend
 ======================================
 Wires together:
-  POST /api/v1/events              — ingest events
+  POST /api/v1/events              — ingest external network events
+  GET  /api/v1/events[/{uuid}]     — SOC event log (network + application events, correlations)
   GET  /api/v1/alerts              — list alerts (filters: severity, status)
   GET  /api/v1/alerts/{id}         — alert detail + evidence
   PATCH /api/v1/alerts/{id}        — update disposition / status
@@ -14,14 +15,16 @@ Wires together:
 Database: PostgreSQL via DATABASE_URL env var, falls back to SQLite for dev.
 AI integration: imports the detector module — never duplicates calculations.
 """
+import logging
 import os
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
 from config import Config
-from core.auth import install_soc_guard, seed_accounts
+from core.auth import ensure_admin_account, install_soc_guard, seed_accounts
 from core.database import db
+from core.migrations import upgrade_schema
 import core.models  # noqa: F401  — registers every table (incl. users/files) before create_all
 
 # Blueprints
@@ -37,8 +40,12 @@ from api.routes_collector import bp_collector
 from api.routes_auth    import bp_auth
 from api.routes_files   import bp_files, bp_employees
 
+from services import app_activity
 from services.event_processor import EventProcessor
+from services.live_collector import LiveCollector
 from services.training_service import TrainingService
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def create_app(config_class=Config):
@@ -72,7 +79,7 @@ def create_app(config_class=Config):
     #   • bp_devices (replaces bp_hosts)
     #   • bp_metrics (replaces bp_stats)
     # ------------------------------------------------------------------
-    app.register_blueprint(bp_events)     # POST /api/v1/events
+    app.register_blueprint(bp_events)     # POST /api/v1/events (ingest) + GET event log
     app.register_blueprint(bp_alerts)     # GET/PATCH /api/v1/alerts
     app.register_blueprint(bp_devices)    # GET /api/v1/devices/{id}/timeline
     app.register_blueprint(bp_metrics)    # GET /api/v1/metrics
@@ -117,12 +124,26 @@ def create_app(config_class=Config):
     # ------------------------------------------------------------------
     with app.app_context():
         db.create_all()
+        upgrade_schema()  # adds columns/indexes to databases created by older versions; keeps rows
+
+        # Background ingestion (collector worker) runs inside this app's context.
+        LiveCollector.get_instance().init_app(app)
 
         if app.config.get("SEED_DEMO_USERS") and not app.config.get("TESTING"):
             created = seed_accounts(app.config["CREDENTIALS_FILE"])
+            created += ensure_admin_account(app.config["CREDENTIALS_FILE"])
             if created:
                 print(f"[Bootstrap] Created {len(created)} portal accounts in the users database. "
                       f"Credentials written to {app.config['CREDENTIALS_FILE']}")
+
+        # Application events whose security-event write failed earlier (outbox retry).
+        try:
+            retried = app_activity.retry_pending(limit=500)
+            if retried["attempted"]:
+                print(f"[Bootstrap] Re-forwarded application activity: {retried}")
+        except Exception as exc:
+            db.session.rollback()
+            print(f"[Bootstrap] Warning: application activity retry failed: {exc}")
 
         checkpoint = os.path.join(Config.CHECKPOINTS_DIR, "kitnet_baseline.pkl")
         normal_csv = os.path.join(Config.DATA_DIR, "botiot_normal_train.csv")
@@ -155,15 +176,32 @@ def create_app(config_class=Config):
 # ------------------------------------------------------------------
 # Entry point
 # ------------------------------------------------------------------
-app = create_app()
+_app = None
+
+
+def __getattr__(name):
+    """
+    `app` is created on first access (PEP 562) — WSGI servers loading "app:app" get it as
+    before, but `from app import create_app` (the test suite) no longer boots a production
+    app against the real instance/ databases.
+    """
+    global _app
+    if name == "app":
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(name)
+
 
 if __name__ == "__main__":
+    app = create_app()
     port = int(os.environ.get("PORT", 5000))
     print(f"\n{'='*66}")
     print(f"  Insider Threat Detection Backend — Person 4")
     print(f"  Encrypted Traffic Analysis  ·  Zero Decryption  ·  Port {port}")
     print(f"{'='*66}")
-    print(f"  POST /api/v1/events              Ingest events")
+    print(f"  POST /api/v1/events              Ingest external network events")
+    print(f"  GET  /api/v1/events              SOC event log (+ /stats, /{{uuid}})")
     print(f"  GET  /api/v1/alerts              List alerts")
     print(f"  GET  /api/v1/alerts/{{id}}         Alert detail + evidence")
     print(f"  PATCH /api/v1/alerts/{{id}}        Update disposition/status")
@@ -171,7 +209,7 @@ if __name__ == "__main__":
     print(f"  GET  /api/v1/metrics             Model & system metrics")
     print(f"  GET  /api/v1/health              Service health check")
     print(f"  GET  /api/v1/stream/live         SSE real-time feed")
-    print(f"  GET/POST /api/v1/collector/*     Live network metadata capture")
+    print(f"  GET/POST /api/v1/collector/*     Network collector (POST = ADMIN)")
     print(f"  POST /api/v1/auth/login|logout   Portal sessions (GET /auth/me)")
     print(f"  /api/v1/files, /employees/me     Employee file portal")
     if os.path.isfile(os.path.join(Config.FRONTEND_DIST, "index.html")):

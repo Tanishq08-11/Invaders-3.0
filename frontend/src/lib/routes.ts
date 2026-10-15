@@ -5,6 +5,8 @@ export const routes = {
   soc: {
     overview: '/soc',
     alerts: '/soc/alerts',
+    events: '/soc/events',
+    collector: '/soc/collector',
     alert: (id: string) => `/soc/alerts/${enc(id)}`,
     device: (id: string) => `/soc/devices/${enc(id)}`,
   },
@@ -18,5 +20,5 @@ export const routes = {
 } as const
 
 /** Default landing route for an authenticated role. */
-export const homeFor = (role: 'EMPLOYEE' | 'SECURITY_ANALYST') =>
-  role === 'SECURITY_ANALYST' ? routes.soc.overview : routes.employee.dashboard
+export const homeFor = (role: 'EMPLOYEE' | 'SECURITY_ANALYST' | 'ADMIN') =>
+  role === 'EMPLOYEE' ? routes.employee.dashboard : routes.soc.overview

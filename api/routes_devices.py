@@ -15,7 +15,7 @@ from statistics import median
 from flask import Blueprint, request, jsonify
 from core.database import db
 from core.data_source import current_data_source
-from core.models import Device, Event, Alert, iso_utc
+from core.models import Device, Event, Alert, iso_utc, TRAFFIC_EVENT_TYPES
 
 bp_devices = Blueprint("devices", __name__, url_prefix="/api/v1/devices")
 
@@ -34,7 +34,7 @@ def _behaviour_profile(device_id: str, alert_dsts: set):
     recent event history (metadata only).
     """
     history = (
-        Event.query.filter_by(src_ip=device_id)
+        Event.query.filter(Event.src_ip == device_id, Event.event_type.in_(TRAFFIC_EVENT_TYPES))
         .order_by(Event.received_at.desc())
         .limit(BASELINE_EVENTS)
         .all()
@@ -104,9 +104,11 @@ def device_timeline(device_id: str):
     include_alerts = request.args.get("alerts", "true").lower() in ("true", "1", "yes")
 
     # Events on this device, newest first
+    # Flows and records only: packets are already inside their flow, and application
+    # activity is attributed to users, not to an address.
     events = (
         Event.query
-        .filter_by(src_ip=device_id)
+        .filter(Event.src_ip == device_id, Event.event_type.in_(TRAFFIC_EVENT_TYPES))
         .order_by(Event.received_at.desc())
         .limit(limit)
         .all()

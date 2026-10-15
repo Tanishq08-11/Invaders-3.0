@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Search, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, ListTree, Radar, Search, ShieldAlert } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { PortalBackground } from './PortalBackground'
@@ -8,11 +8,14 @@ import { PageTransition } from './PageTransition'
 import { PortalHeader, type PortalNavItem } from './PortalHeader'
 import { useAuth } from '@/auth/AuthProvider'
 import { UI_PREVIEW } from '@/auth/guards'
+import { useLiveUpdates } from '@/api/live'
 import { routes } from '@/lib/routes'
 
 const NAV: PortalNavItem[] = [
   { to: routes.soc.overview, label: 'Security Overview', icon: LayoutDashboard },
   { to: routes.soc.alerts, label: 'Alert Center', icon: ShieldAlert },
+  { to: routes.soc.events, label: 'Event Log', icon: ListTree },
+  { to: routes.soc.collector, label: 'Network Collector', icon: Radar },
 ]
 
 /** SOC layout for security analysts: sticky top navbar with device lookup, full-width content. */
@@ -20,6 +23,8 @@ export function SocShell() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [device, setDevice] = useState('')
+  // One live-update (SSE) subscription for the whole SOC session; released on sign-out.
+  useLiveUpdates()
 
   return (
     <div className="relative flex min-h-svh flex-col overflow-x-clip bg-background">

@@ -1,15 +1,28 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, isApiConfigured } from './client'
-import { getAlert, getAlerts, getDeviceTimeline, getHealth, getMetrics, patchAlert } from './endpoints'
-import type { AlertUpdate } from '@/types'
+import {
+  analysePcap,
+  getAlert,
+  getAlerts,
+  getCaptureInterfaces,
+  getCollectorStatus,
+  getDeviceTimeline,
+  getEvent,
+  getEventStats,
+  getEvents,
+  getHealth,
+  getMetrics,
+  patchAlert,
+  startCollector,
+  stopCollector,
+  type CollectorStartRequest,
+  type EventFilters,
+} from './endpoints'
+import { keys } from './keys'
+import { useLiveStatus, type LiveStatus } from './live'
+import type { AlertUpdate, CollectorAction } from '@/types'
 
-export const keys = {
-  alerts: ['alerts'] as const,
-  alert: (id: string) => ['alerts', id] as const,
-  device: (id: string) => ['devices', id, 'timeline'] as const,
-  metrics: ['metrics'] as const,
-  health: ['health'] as const,
-}
+export { keys }
 
 // Do not hammer a backend that is missing, rejecting the request, or answering with a bad contract.
 function shouldRetry(count: number, err: unknown): boolean {
@@ -23,14 +36,28 @@ function shouldRetry(count: number, err: unknown): boolean {
 const base = { retry: shouldRetry, staleTime: 15_000 }
 const poll = (ms: number) => (isApiConfigured ? ms : false)
 
-export const useAlerts = () =>
-  useQuery({
+/**
+ * Polling is the fallback for live updates: while the SSE stream is connected, views are
+ * refreshed by stream notifications and polling slows down; otherwise it runs at `fast`.
+ */
+export function pollIntervalFor(live: LiveStatus, fast: number, slow: number): number {
+  return live === 'connected' ? slow : fast
+}
+
+function useAdaptivePoll(fast: number, slow: number) {
+  return poll(pollIntervalFor(useLiveStatus(), fast, slow))
+}
+
+export const useAlerts = () => {
+  const interval = useAdaptivePoll(30_000, 120_000)
+  return useQuery({
     queryKey: keys.alerts,
     queryFn: ({ signal }) => getAlerts(signal),
     enabled: isApiConfigured,
-    refetchInterval: poll(30_000),
+    refetchInterval: interval,
     ...base,
   })
+}
 
 export const useAlert = (id: string) =>
   useQuery({
@@ -48,14 +75,16 @@ export const useDeviceTimeline = (id: string) =>
     ...base,
   })
 
-export const useMetrics = () =>
-  useQuery({
+export const useMetrics = () => {
+  const interval = useAdaptivePoll(30_000, 120_000)
+  return useQuery({
     queryKey: keys.metrics,
     queryFn: ({ signal }) => getMetrics(signal),
     enabled: isApiConfigured,
-    refetchInterval: poll(30_000),
+    refetchInterval: interval,
     ...base,
   })
+}
 
 export const useHealth = () =>
   useQuery({
@@ -65,6 +94,75 @@ export const useHealth = () =>
     refetchInterval: poll(15_000),
     ...base,
   })
+
+export const useEvents = (filters: EventFilters) => {
+  const interval = useAdaptivePoll(15_000, 60_000)
+  return useQuery({
+    queryKey: keys.eventList(filters),
+    queryFn: ({ signal }) => getEvents(filters, signal),
+    enabled: isApiConfigured,
+    refetchInterval: filters.beforeId ? false : interval, // older pages do not change
+    placeholderData: keepPreviousData,
+    ...base,
+  })
+}
+
+export const useEvent = (uuid: string | null) =>
+  useQuery({
+    queryKey: keys.event(uuid ?? ''),
+    queryFn: ({ signal }) => getEvent(uuid as string, signal),
+    enabled: isApiConfigured && !!uuid,
+    ...base,
+  })
+
+export const useEventStats = () => {
+  const interval = useAdaptivePoll(15_000, 60_000)
+  return useQuery({
+    queryKey: keys.eventStats,
+    queryFn: ({ signal }) => getEventStats(signal),
+    enabled: isApiConfigured,
+    refetchInterval: interval,
+    ...base,
+  })
+}
+
+export const useCollectorStatus = () => {
+  const interval = useAdaptivePoll(5_000, 30_000)
+  return useQuery({
+    queryKey: keys.collectorStatus,
+    queryFn: ({ signal }) => getCollectorStatus(signal),
+    enabled: isApiConfigured,
+    refetchInterval: interval,
+    ...base,
+    staleTime: 2_000,
+  })
+}
+
+export const useCaptureInterfaces = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.interfaces,
+    queryFn: ({ signal }) => getCaptureInterfaces(signal),
+    enabled: isApiConfigured && enabled,
+    ...base,
+  })
+
+function useCollectorMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.collector })
+      void qc.invalidateQueries({ queryKey: keys.health })
+      void qc.invalidateQueries({ queryKey: keys.events })
+      void qc.invalidateQueries({ queryKey: keys.metrics })
+    },
+  })
+}
+
+export const useStartCollector = () => useCollectorMutation((body: CollectorStartRequest) => startCollector(body))
+export const useStopCollector = () => useCollectorMutation<void, CollectorAction>(() => stopCollector())
+export const useAnalysePcap = () =>
+  useCollectorMutation(({ file, maxPackets }: { file: File; maxPackets?: number }) => analysePcap(file, maxPackets))
 
 export function useUpdateAlert(id: string) {
   const qc = useQueryClient()
