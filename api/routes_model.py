@@ -9,6 +9,7 @@ from config import Config
 from core.models import ModelVersion
 from services.event_processor import EventProcessor
 from services.training_service import TrainingService
+from services.model_adapter import ModelManager
 
 bp_model = Blueprint("model", __name__, url_prefix="/api/v1/model")
 
@@ -136,3 +137,46 @@ def list_features():
         "total_clusters": len(clusters),
         "features": feature_list
     })
+
+
+@bp_model.route("/verify", methods=["POST"])
+def verify_model():
+    """
+    Rigorously verifies model integration compatibility with Person 4 pipeline.
+    Tests input dimensions (100-D), output signature, score validity, and inference latency.
+    Can verify:
+      1. Currently active in-memory model (default)
+      2. Uploaded / on-disk checkpoint (.pkl, .pt)
+    Optionally hot-swaps model into live pipeline if `deploy: true`.
+    """
+    data = request.get_json(silent=True) or {}
+    proc = EventProcessor.get_instance()
+
+    target_path = data.get("model_path")
+    checkpoint_name = data.get("checkpoint_name")
+    deploy = bool(data.get("deploy", False))
+
+    if checkpoint_name:
+        target_path = os.path.join(Config.CHECKPOINTS_DIR, checkpoint_name)
+
+    if target_path:
+        verification = ModelManager.verify_model(target_path)
+    else:
+        if not proc.kitnet:
+            return jsonify({
+                "verified": False,
+                "error": "No active model currently loaded in pipeline to verify"
+            }), 400
+        verification = ModelManager.verify_model(proc.kitnet)
+
+    if deploy and verification.get("verified"):
+        if target_path:
+            ModelManager.hot_swap_teammate_model(target_path, version_tag=data.get("version_tag", "teammate-verified"))
+        return jsonify({
+            "message": "Model verified and successfully deployed to live pipeline!",
+            "verification": verification,
+            "status": "active"
+        })
+
+    return jsonify(verification), (200 if verification.get("verified") else 422)
+

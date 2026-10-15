@@ -30,6 +30,7 @@ from api.routes_health  import bp_health
 from api.routes_stream  import bp_stream
 from api.routes_model   import bp_model
 from api.routes_dataset import bp_dataset
+from api.routes_collector import bp_collector
 
 from services.event_processor import EventProcessor
 from services.training_service import TrainingService
@@ -45,15 +46,16 @@ def create_app(config_class=Config):
     # Database
     db.init_app(app)
 
-    # Register the Person 4 API surface + Model/Dataset management
+    # Register the Person 4 API surface + Model/Dataset management + Collector
     app.register_blueprint(bp_events)     # POST /api/v1/events
     app.register_blueprint(bp_alerts)     # GET/PATCH /api/v1/alerts
     app.register_blueprint(bp_devices)    # GET /api/v1/devices/{id}/timeline
     app.register_blueprint(bp_metrics)    # GET /api/v1/metrics
     app.register_blueprint(bp_health)     # GET /api/v1/health
     app.register_blueprint(bp_stream)     # GET /api/v1/stream/live + sim controls
-    app.register_blueprint(bp_model)      # GET/POST /api/v1/model (train, status, thresholds)
+    app.register_blueprint(bp_model)      # GET/POST /api/v1/model (train, status, thresholds, verify)
     app.register_blueprint(bp_dataset)    # GET/POST /api/v1/dataset (info, sample, upload)
+    app.register_blueprint(bp_collector)  # GET/POST /api/v1/collector (live capture, pcap, status)
 
     # Root redirect to health
     @app.route("/", methods=["GET"])
@@ -114,5 +116,6 @@ if __name__ == "__main__":
     print(f"  GET  /api/v1/metrics             Model & system metrics")
     print(f"  GET  /api/v1/health              Service health check")
     print(f"  GET  /api/v1/stream/live         SSE real-time feed")
+    print(f"  GET/POST /api/v1/collector/*     Live network metadata capture")
     print(f"{'='*66}\n")
     app.run(host="0.0.0.0", port=port, debug=Config.DEBUG, threaded=True)
