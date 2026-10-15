@@ -45,6 +45,11 @@ class LiveCollector:
         self.bpf_filter: str = "ip"
         self.packets_captured: int = 0
         self.bytes_captured: int = 0
+        self.corrupted_packets_count: int = 0
+        self.collector_errors_count: int = 0
+        self.processing_errors_count: int = 0
+        self.last_collector_error: Optional[str] = None
+        self.last_processing_error: Optional[str] = None
         self.start_time: Optional[float] = None
         self._sniffer = None
         self._capture_thread: Optional[threading.Thread] = None
@@ -72,50 +77,55 @@ class LiveCollector:
         """
         Extracts 5-tuple network metadata from a raw packet header.
         NEVER decrypts or inspects packet payload content.
+        Safely handles corrupted or malformed packets without throwing exceptions.
         """
         if not SCAPY_AVAILABLE:
             return None
 
-        # 1. IP Layer
-        src_ip = "0.0.0.0"
-        dst_ip = "0.0.0.0"
-        if pkt.haslayer(IP):
-            src_ip = pkt[IP].src
-            dst_ip = pkt[IP].dst
-        elif pkt.haslayer(IPv6):
-            src_ip = pkt[IPv6].src
-            dst_ip = pkt[IPv6].dst
-        else:
-            return None  # Ignore non-IP link layer frames
+        try:
+            # 1. IP Layer
+            src_ip = "0.0.0.0"
+            dst_ip = "0.0.0.0"
+            if pkt.haslayer(IP):
+                src_ip = str(pkt[IP].src)
+                dst_ip = str(pkt[IP].dst)
+            elif pkt.haslayer(IPv6):
+                src_ip = str(pkt[IPv6].src)
+                dst_ip = str(pkt[IPv6].dst)
+            else:
+                return None  # Ignore non-IP link layer frames
 
-        # 2. Transport Layer
-        src_port = 0
-        dst_port = 0
-        proto = "OTHER"
-        if pkt.haslayer(TCP):
-            src_port = int(pkt[TCP].sport)
-            dst_port = int(pkt[TCP].dport)
-            proto = "TCP"
-        elif pkt.haslayer(UDP):
-            src_port = int(pkt[UDP].sport)
-            dst_port = int(pkt[UDP].dport)
-            proto = "UDP"
+            # 2. Transport Layer
+            src_port = 0
+            dst_port = 0
+            proto = "OTHER"
+            if pkt.haslayer(TCP):
+                src_port = int(pkt[TCP].sport)
+                dst_port = int(pkt[TCP].dport)
+                proto = "TCP"
+            elif pkt.haslayer(UDP):
+                src_port = int(pkt[UDP].sport)
+                dst_port = int(pkt[UDP].dport)
+                proto = "UDP"
 
-        # 3. Size & Timing
-        pkt_len = len(pkt)
-        pkt_time = float(getattr(pkt, "time", time.time()))
+            # 3. Size & Timing
+            pkt_len = int(len(pkt))
+            pkt_time = float(getattr(pkt, "time", time.time()))
 
-        return {
-            "timestamp": pkt_time,
-            "src_ip":    src_ip,
-            "dst_ip":    dst_ip,
-            "src_port":  src_port,
-            "dst_port":  dst_port,
-            "protocol":  proto,
-            "bytes":     pkt_len,
-            "pkts":      1,
-            "duration":  0.0,
-        }
+            return {
+                "timestamp": pkt_time,
+                "src_ip":    src_ip,
+                "dst_ip":    dst_ip,
+                "src_port":  src_port,
+                "dst_port":  dst_port,
+                "protocol":  proto,
+                "bytes":     pkt_len,
+                "pkts":      1,
+                "duration":  0.0,
+            }
+        except Exception:
+            # Corrupted / truncated packet header
+            return None
 
     # ------------------------------------------------------------------
     # Packet Handler Callback
@@ -124,15 +134,28 @@ class LiveCollector:
         if not self.is_running:
             return
 
-        meta = self.extract_packet_metadata(pkt)
-        if meta:
-            self.packets_captured += 1
-            self.bytes_captured += meta["bytes"]
+        try:
+            meta = self.extract_packet_metadata(pkt)
+            if not meta:
+                self.corrupted_packets_count += 1
+                return
 
-            if self._ingest_callback:
-                self._ingest_callback(meta)
-            else:
-                self._default_ingest(meta)
+            self.packets_captured += 1
+            self.bytes_captured += meta.get("bytes", 0)
+
+            # Ingest through callback or default EventProcessor
+            try:
+                if self._ingest_callback:
+                    self._ingest_callback(meta)
+                else:
+                    self._default_ingest(meta)
+            except Exception as proc_exc:
+                self.processing_errors_count += 1
+                self.last_processing_error = str(proc_exc)
+
+        except Exception as coll_exc:
+            self.collector_errors_count += 1
+            self.last_collector_error = str(coll_exc)
 
     # ------------------------------------------------------------------
     # Live Interface Sniffing
@@ -261,20 +284,33 @@ class LiveCollector:
 
         def _pcap_callback(pkt):
             nonlocal threats_found
-            meta = self.extract_packet_metadata(pkt)
-            if meta:
-                extracted.append(meta)
-                if auto_ingest:
-                    res = self._default_ingest(meta)
-                    if res and res.get("alert"):
-                        threats_found += 1
+            try:
+                meta = self.extract_packet_metadata(pkt)
+                if meta:
+                    extracted.append(meta)
+                    if auto_ingest:
+                        res = self._default_ingest(meta)
+                        if res and res.get("alert"):
+                            threats_found += 1
+            except Exception as pcap_err:
+                self.processing_errors_count += 1
+                self.last_processing_error = str(pcap_err)
 
-        sniff(
-            offline=pcap_path,
-            prn=_pcap_callback,
-            count=max_packets or 0,
-            store=False
-        )
+        try:
+            sniff(
+                offline=pcap_path,
+                prn=_pcap_callback,
+                count=max_packets or 0,
+                store=False
+            )
+        except Exception as exc:
+            return {
+                "status": "error",
+                "file": os.path.basename(pcap_path),
+                "error": f"Failed to parse PCAP file: {str(exc)}",
+                "total_packets": len(extracted),
+                "threats_detected": threats_found
+            }
 
         return {
             "status": "completed",
@@ -292,17 +328,22 @@ class LiveCollector:
         pps = round(self.packets_captured / max(uptime, 0.001), 1) if self.is_running else 0.0
 
         return {
-            "is_running":        self.is_running,
-            "is_capturing":      self.is_running,
-            "active_interface":  self.active_interface,
-            "bpf_filter":        self.bpf_filter,
-            "packets_captured":  self.packets_captured,
-            "bytes_captured":    self.bytes_captured,
-            "events_ingested":   self.packets_captured,
-            "uptime_seconds":    uptime,
-            "packets_per_sec":   pps,
-            "throughput_pps":    pps,
-            "scapy_available":   SCAPY_AVAILABLE,
+            "is_running":              self.is_running,
+            "is_capturing":            self.is_running,
+            "active_interface":        self.active_interface,
+            "bpf_filter":              self.bpf_filter,
+            "packets_captured":        self.packets_captured,
+            "bytes_captured":          self.bytes_captured,
+            "events_ingested":         self.packets_captured,
+            "corrupted_packets":       self.corrupted_packets_count,
+            "collector_errors":        self.collector_errors_count,
+            "processing_errors":       self.processing_errors_count,
+            "last_collector_error":    self.last_collector_error,
+            "last_processing_error":   self.last_processing_error,
+            "uptime_seconds":          uptime,
+            "packets_per_sec":         pps,
+            "throughput_pps":          pps,
+            "scapy_available":         SCAPY_AVAILABLE,
         }
 
     def list_interfaces(self) -> List[Dict[str, Any]]:

@@ -35,14 +35,16 @@ def list_interfaces():
 def start_capture():
     """
     Starts live network packet capture and automated metadata extraction.
-    Payload (optional): { "interface": "...", "filter": "tcp or udp" }
+    Payload (optional): { "interface": "...", "filter": "tcp or udp", "simulate": false }
     """
     data = request.get_json(silent=True) or {}
     iface = data.get("interface")
     bpf = data.get("filter", "ip")
+    simulate = bool(data.get("simulate", False))
     collector = LiveCollector.get_instance()
-    result = collector.start_live_capture(interface=iface, bpf_filter=bpf)
-    return jsonify(result)
+    result = collector.start_live_capture(interface=iface, bpf_filter=bpf, simulate=simulate)
+    status_code = 200 if result.get("status") in ("started", "already_running") else 400
+    return jsonify(result), status_code
 
 
 @bp_collector.route("/stop", methods=["POST"])
