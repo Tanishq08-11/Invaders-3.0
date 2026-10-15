@@ -6,8 +6,8 @@ fine-tune detection thresholds, and explore feature clusters.
 import os
 from flask import Blueprint, request, jsonify
 from config import Config
-from core.models_db import ModelBaseline
-from services.detection_service import DetectionService
+from core.models import ModelVersion
+from services.event_processor import EventProcessor
 from services.training_service import TrainingService
 
 bp_model = Blueprint("model", __name__, url_prefix="/api/v1/model")
@@ -16,26 +16,26 @@ bp_model = Blueprint("model", __name__, url_prefix="/api/v1/model")
 @bp_model.route("/status", methods=["GET"])
 def model_status():
     """Inspects the active KitNET detector and baseline parameters."""
-    detection_svc = DetectionService.get_instance()
-    kitnet = detection_svc.kitnet
-    active_baseline = ModelBaseline.query.filter_by(is_active=True).first()
+    proc = EventProcessor.get_instance()
+    kitnet = proc.kitnet
+    active_baseline = ModelVersion.query.filter_by(is_active=True).first()
 
     return jsonify({
-        "is_model_loaded": detection_svc.is_model_loaded,
-        "phase": kitnet.phase,
-        "input_dimension": kitnet.input_dim,
-        "num_clusters": len(kitnet.clusters),
-        "cluster_sizes": [len(c) for c in kitnet.clusters],
-        "baseline_mean_error": round(kitnet.baseline_mean, 5),
-        "baseline_std_error": round(kitnet.baseline_std, 5),
-        "baseline_max_error": round(kitnet.baseline_max, 5),
+        "is_model_loaded": proc.model_loaded,
+        "phase": kitnet.phase if kitnet else None,
+        "input_dimension": kitnet.input_dim if kitnet else None,
+        "num_clusters": len(kitnet.clusters) if kitnet else 0,
+        "cluster_sizes": [len(c) for c in kitnet.clusters] if kitnet else [],
+        "baseline_mean_error": round(kitnet.baseline_mean, 5) if kitnet else None,
+        "baseline_std_error": round(kitnet.baseline_std, 5) if kitnet else None,
+        "baseline_max_error": round(kitnet.baseline_max, 5) if kitnet else None,
         "active_baseline_meta": active_baseline.to_dict() if active_baseline else None,
         "thresholds": {
-            "z_low": detection_svc.risk_engine.z_low,
-            "z_med": detection_svc.risk_engine.z_med,
-            "z_high": detection_svc.risk_engine.z_high,
-            "z_crit": detection_svc.risk_engine.z_crit
-        }
+            "z_low": proc.risk_engine.z_low,
+            "z_med": proc.risk_engine.z_med,
+            "z_high": proc.risk_engine.z_high,
+            "z_crit": proc.risk_engine.z_crit
+        } if proc.risk_engine else None
     })
 
 
@@ -45,7 +45,7 @@ def trigger_training():
     Triggers baseline training on BoT-IoT normal dataset (or custom uploaded CSV).
     Workflow: Normal Traffic -> Kitsune AfterImage Extractor -> KitNET Training -> Baseline Calibration.
     """
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     dataset_name = data.get("dataset_name", "botiot_normal_train.csv")
     csv_path = os.path.join(Config.DATA_DIR, dataset_name)
     epochs = int(data.get("epochs", 1))
@@ -63,9 +63,11 @@ def trigger_training():
             epochs=epochs,
             max_rows=max_rows
         )
-        # Reload model into detection service
-        detection_svc = DetectionService.get_instance()
-        detection_svc.reload_model()
+        # Reload model into EventProcessor
+        proc = EventProcessor.get_instance()
+        proc.reload_model()
+        if train_result.get("model_version_id"):
+            proc.set_active_model_version(train_result["model_version_id"])
 
         return jsonify({
             "message": "KitNET baseline successfully trained and calibrated!",
@@ -78,8 +80,12 @@ def trigger_training():
 @bp_model.route("/thresholds", methods=["POST"])
 def update_thresholds():
     """Dynamically updates risk engine sensitivity thresholds."""
-    data = request.get_json() or {}
-    risk_engine = DetectionService.get_instance().risk_engine
+    data = request.get_json(silent=True) or {}
+    proc = EventProcessor.get_instance()
+    risk_engine = proc.risk_engine
+
+    if not risk_engine:
+        return jsonify({"error": "Risk engine not initialized"}), 500
 
     if "z_low" in data:
         risk_engine.z_low = float(data["z_low"])
@@ -104,9 +110,9 @@ def update_thresholds():
 @bp_model.route("/features", methods=["GET"])
 def list_features():
     """Returns the 100 AfterImage feature catalog and active cluster mappings."""
-    detection_svc = DetectionService.get_instance()
-    feature_names = detection_svc.extractor.get_feature_names()
-    clusters = detection_svc.kitnet.clusters
+    proc = EventProcessor.get_instance()
+    feature_names = proc.extractor.get_feature_names()
+    clusters = proc.kitnet.clusters if proc.kitnet else []
 
     # Map feature index to cluster index
     cluster_lookup = {}
@@ -116,7 +122,7 @@ def list_features():
 
     feature_list = []
     for idx, name in enumerate(feature_names):
-        info = detection_svc.explanation_engine._lookup_feature_info(name)
+        info = proc.explanation_engine._lookup_feature_info(name)
         feature_list.append({
             "index": idx,
             "name": name,
