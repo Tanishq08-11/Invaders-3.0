@@ -232,6 +232,8 @@ class EventProcessor:
 
         if ai_error_msg:
             event_row.ai_error = ai_error_msg
+            event_row.anomaly_score = None
+            event_row.ai_processed = False
             # Commit the event with the error recorded — do NOT assign zero score
             db.session.commit()
             result = event_row.to_dict()

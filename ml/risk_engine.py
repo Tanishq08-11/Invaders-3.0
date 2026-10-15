@@ -30,14 +30,19 @@ class RiskEngine:
         self.z_crit = z_crit
 
         self.suspicious_ports = {
-            443: "TLS/HTTPS Encrypted Channel",
-            8443: "Alternative HTTPS Port",
-            22: "SSH/SFTP Secure Shell Transfer",
-            2222: "Non-standard SSH",
-            8080: "HTTP/Proxy Tunnel",
-            53: "DNS / Encrypted DoH Tunneling",
+            4444: "Metasploit / Command & Control Default",
             9001: "Tor / Encrypted Proxy",
-            4444: "Metasploit / Command & Control Default"
+            2222: "Non-standard SSH Tunnel",
+            31337: "Back Orifice Trojan Port",
+            6667: "IRC Exfiltration Channel",
+            8088: "Custom HTTP Proxy Tunnel",
+            8080: "HTTP/Proxy Tunnel",
+            22:   "SSH/SFTP Secure Shell Transfer",
+        }
+        self.encrypted_channels = {
+            443:  "TLS/HTTPS Encrypted Channel",
+            8443: "Alternative HTTPS Port",
+            53:   "DNS / Encrypted DoH Tunneling",
         }
 
     def is_private_ip(self, ip_str: str) -> bool:
@@ -98,14 +103,17 @@ class RiskEngine:
         dst_ip = flow_meta.get("dst_ip", "0.0.0.0")
         is_external = not self.is_private_ip(dst_ip)
         if is_external:
-            heuristic_risk += 12.0
+            heuristic_risk += 10.0
             risk_factors.append(f"Outbound transfer to external destination: {dst_ip}")
 
-        # Check Egress Port
+        # Check Egress Port (Known C2 / Tunnel ports or Encrypted channel under anomaly)
         dst_port = int(flow_meta.get("dst_port", 0))
         if dst_port in self.suspicious_ports:
-            heuristic_risk += 10.0
-            risk_factors.append(f"Target port {dst_port} ({self.suspicious_ports[dst_port]})")
+            heuristic_risk += 12.0
+            risk_factors.append(f"Suspicious destination port {dst_port} ({self.suspicious_ports[dst_port]})")
+        elif dst_port in self.encrypted_channels and (z_score >= self.z_low or is_external):
+            heuristic_risk += 6.0
+            risk_factors.append(f"Encrypted channel {dst_port} ({self.encrypted_channels[dst_port]})")
 
         # Check Off-Hours Timing
         ts_val = flow_meta.get("timestamp")
@@ -122,27 +130,37 @@ class RiskEngine:
             risk_factors.append("Off-hours data transmission (evening/night or weekend)")
 
         # Check High Volume / Outbound Burst
-        pkt_len = float(flow_meta.get("length", flow_meta.get("bytes", 0)))
-        if pkt_len > 1200:
+        bytes_val = float(flow_meta.get("bytes") or flow_meta.get("sum") or 0.0)
+        len_val = float(flow_meta.get("length") or 0.0)
+        mean_val = float(flow_meta.get("mean") or 0.0)
+        mean_pkt = mean_val if mean_val > 0 else (len_val if len_val <= 1514 else 0.0)
+        if 1300 <= mean_pkt <= 1514:
             heuristic_risk += 6.0
-            risk_factors.append(f"Max MTU frame size ({int(pkt_len)} bytes) indicative of bulk file transfer")
+            risk_factors.append(f"Near-MTU packet framing ({int(mean_pkt)} bytes/pkt) indicative of continuous data dumping")
+        elif bytes_val > 5_000_000:
+            heuristic_risk += 8.0
+            risk_factors.append(f"Bulk data transfer volume ({bytes_val / (1024*1024):.1f} MB)")
 
-        # Total Risk Score
+        # Total Risk Score (capped at 100)
         total_risk = min(100.0, base_risk + heuristic_risk)
 
-        # Severity Categorization
-        if total_risk >= 88.0 or z_score >= self.z_crit:
-            severity = "CRITICAL"
-        elif total_risk >= 70.0 or z_score >= self.z_high:
-            severity = "HIGH"
-        elif total_risk >= 50.0 or z_score >= self.z_med:
-            severity = "MEDIUM"
-        elif total_risk >= 30.0 or z_score >= self.z_low:
-            severity = "LOW"
+        # 4. Severity & Threat Categorization with Statistical Anomaly Gating
+        if z_score < self.z_low:
+            severity = "NORMAL" if total_risk < 30.0 else "LOW"
+            is_threat = False
+        elif z_score < self.z_med:
+            if total_risk >= 65.0:
+                severity = "MEDIUM"
+                is_threat = True
+            else:
+                severity = "LOW"
+                is_threat = False
+        elif z_score < self.z_high:
+            severity = "HIGH" if total_risk >= 70.0 else "MEDIUM"
+            is_threat = True
         else:
-            severity = "NORMAL"
-
-        is_threat = severity in ["MEDIUM", "HIGH", "CRITICAL"]
+            severity = "CRITICAL" if (total_risk >= 85.0 or z_score >= self.z_crit) else "HIGH"
+            is_threat = True
         confidence = float(np.clip(0.65 + (z_score / 20.0) * 0.3, 0.65, 0.99))
 
         return {
