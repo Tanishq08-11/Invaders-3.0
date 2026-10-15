@@ -113,6 +113,10 @@ def install_soc_guard(app):
             if _ingest_allowed():
                 return None
             return jsonify({"detail": "A valid X-Ingest-Key header is required for event ingestion."}), 401
+        if path.startswith("/api/v1/model/predict"):
+            if _ingest_allowed() or is_soc_viewer():
+                return None
+            return jsonify({"detail": "Authentication or a valid X-Ingest-Key header is required for prediction."}), 401
         if not soc_auth_enabled():
             return None
         if _under(path, SOC_PREFIXES):

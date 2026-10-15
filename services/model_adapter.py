@@ -36,9 +36,9 @@ class TeammateModelAdapter:
 
     def score(self, feat_vec: np.ndarray) -> Tuple[float, np.ndarray]:
         """
-        Executes inference on 100-D feature vector, returning:
+        Executes inference on a feature vector, returning:
           - anomaly_score (scalar float)
-          - per-feature reconstruction errors (100-D array for XAI attribution)
+          - per-feature reconstruction errors (array for XAI attribution)
         """
         # 1. Native KitNET model
         if hasattr(self.raw_model, "score") and callable(self.raw_model.score):
@@ -86,7 +86,7 @@ class ModelManager:
     Manages model registration, integrity verification, and dynamic hot-swapping.
     """
     @staticmethod
-    def verify_model(model_obj_or_path: Any, input_dim: int = 100) -> Dict[str, Any]:
+    def verify_model(model_obj_or_path: Any, input_dim: Optional[int] = None) -> Dict[str, Any]:
         """
         Runs an automated calibration test on any model to rigorously verify
         that it satisfies Person 4 integration requirements before deployment.
@@ -118,6 +118,16 @@ class ModelManager:
         # Wrap in adapter
         adapter = TeammateModelAdapter(model)
 
+        if input_dim is None:
+            if hasattr(model, "input_dim") and isinstance(model.input_dim, int):
+                input_dim = model.input_dim
+            elif hasattr(model, "n_features_in_") and isinstance(model.n_features_in_, int):
+                input_dim = model.n_features_in_
+            elif hasattr(adapter.raw_model, "input_dim") and isinstance(adapter.raw_model.input_dim, int):
+                input_dim = adapter.raw_model.input_dim
+            else:
+                input_dim = 78
+
         # Run synthetic calibration vector
         test_vec = np.ones(input_dim, dtype=np.float32) * 2.5
         try:
@@ -142,7 +152,7 @@ class ModelManager:
                 "feature_errors_dim": len(errs),
                 "inference_latency_ms": latency_ms,
                 "input_dimension": input_dim,
-                "message": "Model successfully verified and confirmed 100% compatible with pipeline integration seam."
+                "message": "Model successfully verified and confirmed compatible with pipeline integration seam."
             }
 
         except Exception as exc:

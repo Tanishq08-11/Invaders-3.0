@@ -155,19 +155,20 @@ def verify_model():
     target_path = data.get("model_path")
     checkpoint_name = data.get("checkpoint_name")
     deploy = bool(data.get("deploy", False))
+    input_dim = data.get("input_dim")
 
     if checkpoint_name:
         target_path = os.path.join(Config.CHECKPOINTS_DIR, checkpoint_name)
 
     if target_path:
-        verification = ModelManager.verify_model(target_path)
+        verification = ModelManager.verify_model(target_path, input_dim=input_dim)
     else:
         if not proc.kitnet:
             return jsonify({
                 "verified": False,
                 "error": "No active model currently loaded in pipeline to verify"
             }), 400
-        verification = ModelManager.verify_model(proc.kitnet)
+        verification = ModelManager.verify_model(proc.kitnet, input_dim=input_dim)
 
     if deploy and verification.get("verified"):
         if target_path:
@@ -179,4 +180,177 @@ def verify_model():
         })
 
     return jsonify(verification), (200 if verification.get("verified") else 422)
+
+
+@bp_model.route("/predict", methods=["POST"])
+def predict():
+    """
+    Run KitNET anomaly detection on a single network flow.
+    Accepts a JSON flow dict with CICFlowMeter-style feature names.
+    Missing features are imputed with the trained medians.
+
+    Returns:
+      - anomaly_score, threshold, is_anomalous
+      - top_contributing_features (XAI attribution from reconstruction errors)
+      - risk_level (NORMAL / LOW / MEDIUM / HIGH / CRITICAL)
+    """
+    from ml.trustlab_adapter import get_trustlab_model
+    import numpy as np
+
+    model = get_trustlab_model()
+    if not model.feature_names:
+        return jsonify({"error": "TrustLab KitNET model not loaded"}), 503
+
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON flow object"}), 400
+
+    # Build 78-D feature vector (median-imputed)
+    feat_vec = model.impute(data)
+    score_val, feat_errors = model.score(feat_vec)
+    is_anomalous = model.is_anomalous(score_val)
+
+    # Top contributing features (XAI)
+    top_k = min(10, model.input_dim)
+    top_indices = np.argsort(feat_errors)[-top_k:][::-1]
+    top_features = [
+        {
+            "index": int(idx),
+            "name": model.feature_names[idx],
+            "error": round(float(feat_errors[idx]), 6),
+            "input_value": round(float(feat_vec[idx]), 6),
+        }
+        for idx in top_indices
+        if feat_errors[idx] > 0
+    ]
+
+    # Risk level based on score vs threshold
+    ratio = score_val / model.threshold if model.threshold > 0 else 0.0
+    if ratio < 0.5:
+        risk_level = "NORMAL"
+    elif ratio < 1.0:
+        risk_level = "LOW"
+    elif ratio < 2.0:
+        risk_level = "MEDIUM"
+    elif ratio < 5.0:
+        risk_level = "HIGH"
+    else:
+        risk_level = "CRITICAL"
+
+    # D1-D21 secondary detection layer (independent of 78-D model features)
+    detector_signals = []
+    try:
+        from services.detection.detectors import all_detectors
+        from services.detection.engine import DetectionContext
+        from services.detection.features import EventFeatures
+        from services.detection.base import TRIGGERED
+
+        f = EventFeatures(
+            event_type="network_record",
+            event_uuid="FLOW-PREDICT",
+            ts=float(data.get("Timestamp", data.get("timestamp", 0.0)) or 0.0),
+            src_ip=str(data.get("Src IP", data.get("src_ip", "0.0.0.0"))),
+            dst_ip=str(data.get("Dst IP", data.get("dst_ip", "0.0.0.0"))),
+            src_port=int(data.get("Src Port", data.get("src_port", 0)) or 0),
+            dst_port=int(data.get("Dst Port", data.get("dst_port", 0)) or 0),
+            protocol=str(data.get("Protocol", data.get("protocol", "TCP"))),
+            outbound_bytes=float(data.get("TotLen Fwd Pkts", data.get("bytes", 0)) or 0),
+            inbound_bytes=float(data.get("TotLen Bwd Pkts", 0) or 0),
+            outbound_packets=float(data.get("Tot Fwd Pkts", 1) or 1),
+            inbound_packets=float(data.get("Tot Bwd Pkts", 0) or 0),
+            duration=float(data.get("Flow Duration", 0.0) or 0.0),
+            completed=True,
+        )
+        ctx = DetectionContext(event=None, features=f, now=float(f.ts or 0.0))
+        for det in all_detectors():
+            if "network_record" in det.event_types or "network_flow" in det.event_types:
+                try:
+                    res = det.evaluate(ctx)
+                    if res.status == TRIGGERED:
+                        detector_signals.append({
+                            "detector_id": det.id,
+                            "name": det.name,
+                            "severity": res.severity,
+                            "score": res.score,
+                            "reason": res.reason,
+                        })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return jsonify({
+        "anomaly_score": round(score_val, 8),
+        "threshold": round(model.threshold, 8),
+        "is_anomalous": is_anomalous,
+        "risk_level": risk_level,
+        "score_to_threshold_ratio": round(ratio, 4),
+        "top_contributing_features": top_features,
+        "detector_signals": detector_signals,
+        "detector_count": len(detector_signals),
+        "model": "kitnet_trustlab_bundle",
+        "input_dimension": model.input_dim,
+        "clusters": len(model.clusters),
+    })
+
+
+@bp_model.route("/predict/batch", methods=["POST"])
+def predict_batch():
+    """
+    Run KitNET anomaly detection on a batch of network flows.
+    Accepts: {"flows": [<flow_dict>, ...], "limit": 500}
+    Returns per-flow results plus aggregate statistics.
+    """
+    from ml.trustlab_adapter import get_trustlab_model
+    import numpy as np
+
+    model = get_trustlab_model()
+    if not model.feature_names:
+        return jsonify({"error": "TrustLab KitNET model not loaded"}), 503
+
+    data = request.get_json(silent=True) or {}
+    flows = data.get("flows", [])
+    if not isinstance(flows, list) or len(flows) == 0:
+        return jsonify({"error": "Request body must contain a non-empty 'flows' array"}), 400
+
+    limit = min(int(data.get("limit", 500)), 1000)
+    flows = flows[:limit]
+
+    results = []
+    anomalous_count = 0
+    scores = []
+
+    for flow in flows:
+        if not isinstance(flow, dict):
+            results.append({"error": "Each flow must be a JSON object"})
+            continue
+
+        feat_vec = model.impute(flow)
+        score_val, feat_errors = model.score(feat_vec)
+        is_anom = model.is_anomalous(score_val)
+        if is_anom:
+            anomalous_count += 1
+        scores.append(score_val)
+
+        top_3 = np.argsort(feat_errors)[-3:][::-1]
+        top_feats = [
+            {"name": model.feature_names[int(i)], "error": round(float(feat_errors[i]), 6)}
+            for i in top_3 if feat_errors[i] > 0
+        ]
+
+        results.append({
+            "anomaly_score": round(score_val, 8),
+            "is_anomalous": is_anom,
+            "top_features": top_feats,
+        })
+
+    return jsonify({
+        "total": len(results),
+        "anomalous": anomalous_count,
+        "normal": len(results) - anomalous_count,
+        "threshold": round(model.threshold, 8),
+        "mean_score": round(float(np.mean(scores)), 8) if scores else None,
+        "max_score": round(float(np.max(scores)), 8) if scores else None,
+        "results": results,
+    })
 
