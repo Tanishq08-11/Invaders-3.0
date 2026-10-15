@@ -8,6 +8,18 @@ import os
 import secrets
 from datetime import timedelta
 
+
+def _env_float(name, default):
+    return float(os.environ.get(name, default))
+
+
+def _env_int(name, default):
+    return int(os.environ.get(name, default))
+
+
+def _env_bool(name, default):
+    return os.environ.get(name, str(default)).lower() in ("true", "1", "yes")
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
@@ -149,3 +161,101 @@ class Config:
     # Server-Sent Events
     SSE_MAX_SUBSCRIBERS = int(os.environ.get("SSE_MAX_SUBSCRIBERS", 50))
     SSE_HEARTBEAT_S = float(os.environ.get("SSE_HEARTBEAT_S", 15))
+
+    # ------------------------------------------------------------------
+    # Rule-based detection layer (services/detection/) — independent of the AI model.
+    # Every threshold below is a documented policy default; override per environment.
+    # ------------------------------------------------------------------
+    DETECTION_ENABLED = _env_bool("DETECTION_ENABLED", True)
+    DETECTORS_DISABLED = [d.strip().upper() for d in os.environ.get("DETECTORS_DISABLED", "").split(",") if d.strip()]
+    DETECTION_TIMEZONE = os.environ.get("DETECTION_TIMEZONE", "UTC")       # D4 hour-of-day profiles
+    RULE_ALERT_MIN_SCORE = _env_float("RULE_ALERT_MIN_SCORE", 60)          # combined rule score for an alert
+    DETECTION_SIGNAL_RETENTION_DAYS = _env_float("DETECTION_SIGNAL_RETENTION_DAYS", 180)
+
+    # Baselines
+    BASELINE_MIN_SAMPLES = _env_int("BASELINE_MIN_SAMPLES", 20)
+    BASELINE_WINDOW_DAYS = _env_float("BASELINE_WINDOW_DAYS", 30)
+    BASELINE_MAX_SAMPLES = _env_int("BASELINE_MAX_SAMPLES", 500)
+    BASELINE_RETENTION_DAYS = _env_float("BASELINE_RETENTION_DAYS", 90)
+    ROBUST_Z_THRESHOLD = _env_float("ROBUST_Z_THRESHOLD", 6.0)            # robust z (median/MAD) to trigger
+
+    # D1 large upload / D5 upload-heavy / D6 long upload
+    D1_MIN_OUTBOUND_BYTES = _env_int("D1_MIN_OUTBOUND_BYTES", 10 * 1024 * 1024)
+    D1_HIGH_OUTBOUND_BYTES = _env_int("D1_HIGH_OUTBOUND_BYTES", 500 * 1024 * 1024)
+    D5_MIN_OUTBOUND_BYTES = _env_int("D5_MIN_OUTBOUND_BYTES", 1024 * 1024)
+    D5_MIN_LOG2_RATIO = _env_float("D5_MIN_LOG2_RATIO", 3.0)              # 8:1 upload:download
+    D6_MIN_DURATION_S = _env_float("D6_MIN_DURATION_S", 240)
+    D6_MIN_OUTBOUND_BYTES = _env_int("D6_MIN_OUTBOUND_BYTES", 20 * 1024 * 1024)
+    # D2 destination novelty
+    D2_MIN_ORG_FLOWS = _env_int("D2_MIN_ORG_FLOWS", 200)                   # org history before novelty counts
+    D2_MIN_OUTBOUND_BYTES = _env_int("D2_MIN_OUTBOUND_BYTES", 1024 * 1024)
+    # D4 unusual time
+    D4_MIN_ACTIVE_HOURS = _env_int("D4_MIN_ACTIVE_HOURS", 40)
+    D4_MIN_DAYS = _env_int("D4_MIN_DAYS", 7)
+    D4_RARE_FRACTION = _env_float("D4_RARE_FRACTION", 0.02)
+    # D7 slow leak (hourly CUSUM over EWMA baseline)
+    D7_BUCKET_S = _env_int("D7_BUCKET_S", 3600)
+    D7_MIN_BUCKETS = _env_int("D7_MIN_BUCKETS", 48)
+    D7_EWMA_ALPHA = _env_float("D7_EWMA_ALPHA", 0.05)
+    D7_CUSUM_K = _env_float("D7_CUSUM_K", 0.5)
+    D7_CUSUM_H = _env_float("D7_CUSUM_H", 8.0)
+    D7_MAX_GAP_BUCKETS = _env_int("D7_MAX_GAP_BUCKETS", 48)
+    # D8 automated transfer
+    D8_MIN_PACKETS = _env_int("D8_MIN_PACKETS", 30)
+    D8_MIN_OUTBOUND_BYTES = _env_int("D8_MIN_OUTBOUND_BYTES", 1024 * 1024)
+    D8_MAX_IAT_ENTROPY = _env_float("D8_MAX_IAT_ENTROPY", 0.35)
+    D8_MAX_IAT_CV = _env_float("D8_MAX_IAT_CV", 0.5)
+    # D9 spread-out leaking / D10 behaviour change (daily rollups)
+    D9_MIN_BYTES_PER_DEST = _env_int("D9_MIN_BYTES_PER_DEST", 256 * 1024)
+    D9_MIN_DESTINATIONS = _env_int("D9_MIN_DESTINATIONS", 5)
+    D9_MIN_DAYS = _env_int("D9_MIN_DAYS", 7)
+    D10_MIN_DAYS = _env_int("D10_MIN_DAYS", 7)
+    D10_Z = _env_float("D10_Z", 4.0)
+    # D16 internal bulk download
+    D16_WINDOW_S = _env_int("D16_WINDOW_S", 3600)
+    D16_MIN_FILES = _env_int("D16_MIN_FILES", 20)
+    D16_MIN_BYTES = _env_int("D16_MIN_BYTES", 200 * 1024 * 1024)
+    D16_MIN_WINDOWS = _env_int("D16_MIN_WINDOWS", 10)
+    D16_POLICY_MAX_FILES = _env_int("D16_POLICY_MAX_FILES", 200)            # absolute policy ceiling
+    # D17 DNS tunnelling
+    D17_WINDOW_S = _env_int("D17_WINDOW_S", 600)
+    D17_MIN_SUBDOMAINS = _env_int("D17_MIN_SUBDOMAINS", 30)
+    D17_MIN_LABEL_LEN = _env_float("D17_MIN_LABEL_LEN", 24)
+    D17_MIN_LABEL_ENTROPY = _env_float("D17_MIN_LABEL_ENTROPY", 3.5)
+    # D19 beaconing
+    D19_MIN_INTERVALS = _env_int("D19_MIN_INTERVALS", 8)
+    D19_MAX_REL_DISPERSION = _env_float("D19_MAX_REL_DISPERSION", 0.1)
+    D19_MIN_INTERVAL_S = _env_float("D19_MIN_INTERVAL_S", 10)
+    D19_MAX_INTERVAL_S = _env_float("D19_MAX_INTERVAL_S", 6 * 3600)
+    # D21 protocol novelty / D28 lateral movement / D22 connection failures
+    D21_MIN_ENTITY_FLOWS = _env_int("D21_MIN_ENTITY_FLOWS", 100)
+    D21_COMMON_MIN_ENTITIES = _env_int("D21_COMMON_MIN_ENTITIES", 3)
+    D22_WINDOW_S = _env_int("D22_WINDOW_S", 600)
+    D22_MIN_FAILURES = _env_int("D22_MIN_FAILURES", 20)
+    D22_SCAN_DISTINCT_TARGETS = _env_int("D22_SCAN_DISTINCT_TARGETS", 50)
+    D28_WINDOW_S = _env_int("D28_WINDOW_S", 900)
+    D28_MIN_NEW_HOSTS = _env_int("D28_MIN_NEW_HOSTS", 5)
+    D28_MIN_HISTORY_FLOWS = _env_int("D28_MIN_HISTORY_FLOWS", 100)
+    # D13/D14/D27 sessions & authentication
+    D13_OVERLAP_GRACE_S = _env_float("D13_OVERLAP_GRACE_S", 300)
+    D14_MIN_LOGINS = _env_int("D14_MIN_LOGINS", 10)
+    D27_WINDOW_S = _env_int("D27_WINDOW_S", 900)
+    D27_ACCOUNT_FAILURES = _env_int("D27_ACCOUNT_FAILURES", 5)
+    D27_SPRAY_ACCOUNTS = _env_int("D27_SPRAY_ACCOUNTS", 5)
+    # D15 two devices / D11 heartbeat / D24 multi-stage / D26 TLS fingerprint
+    D15_WINDOW_S = _env_int("D15_WINDOW_S", 600)
+    D24_WINDOW_S = _env_int("D24_WINDOW_S", 86400)
+    D24_MIN_STAGES = _env_int("D24_MIN_STAGES", 3)
+    D26_MIN_OBSERVATIONS = _env_int("D26_MIN_OBSERVATIONS", 10)
+    TELEMETRY_SWEEP_S = _env_int("TELEMETRY_SWEEP_S", 60)
+    D25_MAX_DROP_RATIO = _env_float("D25_MAX_DROP_RATIO", 0.01)
+    D25_MAX_OUTBOX_PENDING = _env_int("D25_MAX_OUTBOX_PENDING", 50)
+
+    # Optional enrichment data sources (local files only; see services/detection/enrichment.py)
+    GEOIP_COUNTRY_DB = os.environ.get("GEOIP_COUNTRY_DB", "")
+    GEOIP_CITY_DB = os.environ.get("GEOIP_CITY_DB", "")
+    GEOIP_ASN_DB = os.environ.get("GEOIP_ASN_DB", "")
+    THREAT_INTEL_DIR = os.environ.get("THREAT_INTEL_DIR", os.path.join(BASE_DIR, "instance", "intel"))
+    INTEL_MAX_AGE_DAYS = _env_float("INTEL_MAX_AGE_DAYS", 7)
+    POLICY_FILE = os.environ.get("POLICY_FILE", os.path.join(BASE_DIR, "policies", "destination_policy.json"))
+    # Heartbeat telemetry ingestion (POST /api/v1/telemetry/heartbeat) uses INGEST_API_KEY.
