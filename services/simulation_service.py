@@ -1,5 +1,7 @@
 """
 Simulation Service — replays BoT-IoT test data through the event processor.
+Replayed rows are stored as network_record events with source="dataset_replay";
+they are never presented as live capture.
 """
 from typing import Optional, Dict, Any
 import os
@@ -8,6 +10,7 @@ import threading
 import pandas as pd
 
 from config import Config
+from core.models import SOURCE_REPLAY
 from services.event_processor import EventProcessor
 
 
@@ -89,9 +92,9 @@ class SimulationService:
 
             if self.flask_app:
                 with self.flask_app.app_context():
-                    self.processor.ingest(row)
+                    self.processor.ingest(row, source=SOURCE_REPLAY)
             else:
-                self.processor.ingest(row)
+                self.processor.ingest(row, source=SOURCE_REPLAY)
 
             self.events_sent += 1
             time.sleep(self.delay_seconds)

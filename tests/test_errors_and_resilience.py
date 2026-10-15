@@ -15,7 +15,16 @@ import pytest
 from app import create_app
 from core.database import db
 from config import Config
-from services.live_collector import LiveCollector
+from services.live_collector import LiveCollector, PcapValidationError
+import services.live_collector as live_collector_mod
+
+
+def _pretend_interface(monkeypatch, name="eth-test"):
+    """Live-start tests use a fake interface and a capture provider that 'exists'."""
+    monkeypatch.setattr(LiveCollector, "list_interfaces",
+                        lambda self: [{"name": name, "description": name, "ips": [], "allowed": True}])
+    monkeypatch.setattr(live_collector_mod, "capture_precheck", lambda: {"available": True, "reason": None})
+    return name
 from services.event_processor import EventProcessor
 
 
@@ -108,11 +117,10 @@ def test_invalid_pcap_parsing_error_handling(client, tmp_path):
     corrupt_pcap = tmp_path / "corrupted_capture.pcap"
     corrupt_pcap.write_bytes(b"THIS IS NOT A VALID PCAP FILE HEADER DATA STREAM 1234567890")
 
+    # A file without a pcap/pcapng header is rejected before any parsing is attempted.
     collector = LiveCollector.get_instance()
-    res = collector.process_pcap_file(str(corrupt_pcap), auto_ingest=False)
-    assert res["status"] in ("error", "completed")
-    if res["status"] == "error":
-        assert "error" in res
+    with pytest.raises(PcapValidationError):
+        collector.process_pcap_file(str(corrupt_pcap), auto_ingest=False)
 
     # Test file-not-found error handling
     with pytest.raises(FileNotFoundError):
@@ -217,7 +225,7 @@ def test_collector_startup_failure_clears_stale_sniffer(monkeypatch):
     Validates Requirement 3: When Scapy startup fails:
     - Record actual failure
     - Clear invalid or stale sniffer references
-    - Report stopped state when fallback is disabled
+    - Report the FAILED state (not live, not silently stopped) when fallback is disabled
     """
     collector = LiveCollector.get_instance()
     collector.stop_capture()
@@ -230,10 +238,12 @@ def test_collector_startup_failure_clears_stale_sniffer(monkeypatch):
 
     import services.live_collector
     monkeypatch.setattr(services.live_collector, "AsyncSniffer", FailingSniffer)
+    iface = _pretend_interface(monkeypatch)
 
-    res = collector.start_live_capture(allow_fallback=False)
+    res = collector.start_live_capture(interface=iface, allow_fallback=False)
     assert res["status"] == "error"
-    assert res["mode"] == "stopped"
+    assert res["mode"] == "failed"
+    assert collector.get_status()["is_live"] is False
     assert collector.is_running is False
     assert collector._sniffer is None
     assert "privilege denied" in (collector.last_collector_error or "").lower()
@@ -257,8 +267,9 @@ def test_collector_startup_failure_explicit_fallback(monkeypatch):
 
     import services.live_collector
     monkeypatch.setattr(services.live_collector, "AsyncSniffer", FailingSniffer)
+    iface = _pretend_interface(monkeypatch)
 
-    res = collector.start_live_capture(allow_fallback=True)
+    res = collector.start_live_capture(interface=iface, allow_fallback=True)
     assert res["status"] == "started"
     assert res["mode"] == "simulation"
     assert res["scapy_live"] is False

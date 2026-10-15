@@ -25,22 +25,31 @@ cd frontend && npm run dev          # → open http://localhost:5173
 
 **Portal accounts** live in a separate users database (`instance/veylix_users.db`, override with
 `AUTH_DATABASE_URL`). On first start, when it is empty, 20 worker accounts and 2 analyst accounts are created,
-each with its own random password. Only scrypt hashes are stored; the generated credentials are written once to
+each with its own random password. An `ADMIN` account (`admin01`) is added whenever none exists (also for
+existing databases). Only scrypt hashes are stored; generated credentials are written to
 `instance/worker_credentials.csv` (gitignored). Delete both files and restart to issue a fresh set.
 
 | Role | Usernames | Lands on |
 | :--- | :--- | :--- |
 | `EMPLOYEE` (20 workers) | `eng01`–`eng04`, `fin01`–`fin04`, `hr01`–`hr04`, `sales01`–`sales04`, `mgmt01`–`mgmt04` | `/employee/dashboard` — file portal |
-| `SECURITY_ANALYST` | `analyst01`, `analyst02` | `/soc` — alerts, incidents, device timelines |
+| `SECURITY_ANALYST` | `analyst01`, `analyst02` | `/soc` — alerts, event log, devices, collector status (read-only) |
+| `ADMIN` | `admin01` | `/soc` — everything an analyst sees, plus collector start/stop, PCAP analysis, dataset replay, model management |
 
-To populate the SOC with data, start the BoT-IoT replay (`POST /api/v1/stream/start` as an analyst) or the live
-collector (`POST /api/v1/collector/start`). Auth model: an HttpOnly session cookie; every SOC route requires a
-`SECURITY_ANALYST` session, file routes require `EMPLOYEE`, `/api/v1/health` and `POST /api/v1/events`
-(ingestion) remain open.
+To populate the SOC with data: upload/download files as an employee (application events), then as `admin01`
+open **Network Collector** and start live capture on an explicitly selected interface, start the clearly
+labelled simulation, or analyse a PCAP. The BoT-IoT replay (`POST /api/v1/stream/start`) also still works.
+Auth model: an HttpOnly session cookie. SOC reads need `SECURITY_ANALYST` or `ADMIN`, service operations need
+`ADMIN`, file routes need `EMPLOYEE`. `/api/v1/health` is public with minimal fields, and `POST /api/v1/events`
+is open unless `INGEST_API_KEY` is set. Full route and role table: [docs/API.md](docs/API.md). Pipeline design:
+[docs/EVENT_PIPELINE.md](docs/EVENT_PIPELINE.md).
 
 ---
 
 ## 1. Architectural Workflow
+
+> The authoritative, current description of the event pipeline (application activity, packets, flows,
+> correlation, detector boundary, SSE) is [docs/EVENT_PIPELINE.md](docs/EVENT_PIPELINE.md). The diagram
+> below shows the detection stages of the original design.
 
 ```
        +-------------------------------------------------------------+
@@ -124,11 +133,14 @@ collector (`POST /api/v1/collector/start`). Auth model: an HttpOnly session cook
 The integrated network collector automatically captures live traffic or replays PCAP traces and streams 5-tuple metadata into the ingestion pipeline:
 
 ### Capabilities
-- **Explicit Operating Modes**:
-  - `live`: Scapy `AsyncSniffer` actively capturing raw packets on host network adapters.
-  - `simulation`: Background simulated traffic worker emitting synthetic flows for development/hackathon environments where raw socket privileges are restricted.
-  - `stopped`: Collector is halted.
-- **Zero Decryption Guarantee**: Extracts strictly 5-tuple metadata without ever decrypting or inspecting packet payloads:
+- **Explicit Operating Modes**: `stopped`, `starting`, `live` (reported only after Scapy confirms the capture
+  socket opened), `simulation` (synthetic packets, every event labelled `source=simulation`), `failed` (start
+  failed or the sniffer died; the reason is in `last_collector_error`).
+- **Flow aggregation**: bidirectional 5-tuple flows with per-direction counts and bytes, size/inter-arrival
+  statistics, TCP flag counts, and idle, active and TCP-close timeouts; memory is bounded (`services/flow_aggregator.py`).
+- **TLS handshake metadata**: SNI, versions, ALPN and JA3 from cleartext ClientHello/ServerHello fields. No
+  decryption. JA4 is not supported. Optional Zeek enrichment for PCAPs.
+- **Zero Decryption Guarantee**: Extracts header metadata without ever decrypting packet payloads or storing their contents:
   ```json
   {
     "timestamp": 1770984000.12,
@@ -141,14 +153,16 @@ The integrated network collector automatically captures live traffic or replays 
   }
   ```
 - **Offline PCAP / PCAPNG Ingestion**: Parses `.pcap`, `.pcapng`, or `.cap` capture files directly into the pipeline with strict input validation on `max_packets` and file integrity.
-- **Environment Fallback**: If Scapy startup fails (e.g. Npcap missing or raw-socket privilege denied), the collector records the failure, clears stale sniffer references, and safely switches to simulation mode without falsely reporting live capture.
+- **No silent fallback**: If live capture cannot start (Npcap missing, privilege denied, unknown or unauthorised
+  interface), the collector reports `failed` with the reason. It switches to simulation only when the operator
+  explicitly passes `allow_simulation_fallback: true`, and then says so in a warning.
 
 ### Command-Line Usage
 ```bash
 # List available network interfaces on the host
 python live_collector.py --list-interfaces
 
-# Start live packet capture on a specific adapter with BPF filter
+# Start live packet capture on a specific adapter with BPF filter (needs Npcap/libpcap + privileges)
 python live_collector.py --interface "Wi-Fi" --filter "tcp or udp"
 
 # Process an offline PCAP file
@@ -192,11 +206,14 @@ The system implements defensive error handling across all layers:
 | Layer | Error Mode | Resilience & Recovery Mechanism |
 | :--- | :--- | :--- |
 | **Collector** | Malformed / corrupted packet headers | Truncated or non-IP headers are safely skipped without throwing; tracked in `corrupted_packets` counter. |
-| **Collector** | Scapy startup failure / permission denied | Scapy exceptions are recorded; stale references are cleared; collector safely switches to simulation mode explicitly. |
+| **Collector** | Scapy startup failure / permission denied / sniffer thread dies | Reported as mode `failed` with the reason; stale references cleared; never reported as `live`. Simulation only on explicit opt-in. |
+| **Collector** | Capture faster than storage | Bounded queue; overflow counted in `packets_dropped`. On stop the queue is drained and open flows are flushed. |
+| **File portal** | SOC database unavailable during upload/download | The file operation and its `FileActivity` row still commit; the security event is retried from the outbox (`application_events_pending` in `/health`). |
+| **Event Processor** | Alert/device/correlation stage fails after storage | The event row is kept with `processing_status=downstream_error` and `processing_error`. |
 | **Collector** | Callback / Ingestion crash | Unhandled exceptions inside packet callbacks are caught; `processing_errors` is incremented; collector thread remains running. |
 | **Collector** | Ingestion failures returned as error dicts | Correctly detected and incremented in `processing_errors`; **never** counted as successful `events_ingested`. |
 | **PCAP Upload**| Invalid `max_packets` or empty files | Strictly validated before processing; non-integers, `<= 0`, and limits exceeding `MAX_PCAP_PACKETS` return HTTP 400. |
-| **Event Processor**| AI model missing or inference failure | **Persist-First Guarantee**: Raw event is committed to the database *first*. When AI fails, `ai_processed=False`, `anomaly_score=null`, and `ai_error` is saved. Event is **never dropped** or given a false zero score. Returns HTTP 202 Accepted. |
+| **Event Processor**| AI model missing or inference failure | **Persist-First Guarantee**: the event is committed *before* the detector runs. `detection_status` is `unavailable`, `unsupported` or `failed`, `anomaly_score=null`, and no alert is created. Never dropped, never given a false zero score. Returns HTTP 202 Accepted. |
 | **Database** | Transaction conflicts / commit errors | Atomic operations with explicit `db.session.rollback()` handlers prevent pending transaction lockouts. |
 | **Streaming**| SSE client disconnect / network drop | Generator wrapped in `finally: proc.unsubscribe(q)` to prevent memory leaks and orphaned queues. |
 
@@ -217,9 +234,14 @@ d:\invaders 3.0\
 ├── conftest.py                 # Pytest root path bootstrap
 ├── README.md                   # Complete architectural and API documentation
 │
+├── docs/
+│   ├── API.md                  # Every registered route: method, role, request/response, errors
+│   └── EVENT_PIPELINE.md       # Event envelope, collector, flows, TLS, correlation, detector boundary
+│
 ├── core/
 │   ├── database.py             # SQLAlchemy instance
-│   ├── models.py               # Canonical Models: Event, Alert, Device, ModelVersion, AnalystAction
+│   ├── migrations.py           # Idempotent schema upgrades for existing databases (keeps rows)
+│   ├── models.py               # Event (+envelope), Alert, Device, ModelVersion, AnalystAction, EventCorrelation, User, FileActivity
 │   └── models_db.py            # (Legacy prototype models — superseded by models.py)
 │
 ├── extractor/
@@ -234,8 +256,14 @@ d:\invaders 3.0\
 │   └── explanation_engine.py   # XAI reconstruction error decomposition & SOC narrative
 │
 ├── services/
-│   ├── event_processor.py      # Persist-first ingestion, scoring, alert creation, SSE broadcasting
-│   ├── live_collector.py       # Live Scapy packet sniffer, PCAP streamer, error telemetry
+│   ├── event_processor.py      # Single event boundary: persist → detect → alert → device → correlate → SSE
+│   ├── live_collector.py       # Collector state machine, capture queue/worker, PCAP analysis
+│   ├── network_metadata.py     # Packet header metadata extraction (no payload retention)
+│   ├── flow_aggregator.py      # Bidirectional flow aggregation with timeouts and memory bound
+│   ├── tls_metadata.py         # ClientHello/ServerHello fields, SNI, JA3 (no decryption)
+│   ├── zeek_tls.py             # Optional Zeek ssl.log enrichment for PCAPs
+│   ├── correlation.py          # Conservative application ↔ network correlation
+│   ├── app_activity.py         # FileActivity → security event outbox
 │   ├── model_adapter.py        # Teammate model verification, calibration, and hot-swapping
 │   ├── training_service.py     # BoT-IoT normal data training & ModelVersion recording
 │   └── simulation_service.py   # Background live traffic replay routed through EventProcessor
@@ -247,7 +275,7 @@ d:\invaders 3.0\
 ├── api/
 │   ├── routes_auth.py          # POST /api/v1/auth/login|logout, GET /api/v1/auth/me
 │   ├── routes_files.py         # /api/v1/files (list, upload, download, activity), GET /api/v1/employees/me
-│   ├── routes_events.py        # POST /api/v1/events (single & batch ingestion)
+│   ├── routes_events.py        # POST /api/v1/events (ingestion), GET event log / stats / detail
 │   ├── routes_alerts.py        # GET/PATCH /api/v1/alerts & /alerts/{id} (filters, evidence, audit)
 │   ├── routes_devices.py       # GET /api/v1/devices/{id}/timeline, GET /devices, POST flag
 │   ├── routes_collector.py     # GET/POST /api/v1/collector (start, stop, status, interfaces, pcap)
@@ -266,6 +294,9 @@ d:\invaders 3.0\
 │   └── botiot_attack_test.csv  # Labeled testing stream with insider exfiltration attacks
 │
 └── tests/
+    ├── test_event_pipeline.py  # Outbox, detector boundary, correlation, collector modes, PCAP, roles, health, SSE, migration
+    ├── test_network_metadata.py# Packet metadata, TLS/JA3, flow aggregation, Zeek log parsing
+    ├── net_builders.py         # Synthetic packets / TLS handshakes for tests
     ├── test_auth_and_files.py  # Login/session, role isolation, file portal, dashboard contract fields
     ├── test_integration.py     # Person 4 Definition of Done end-to-end integration test suite
     ├── test_collector.py       # Live network collector & metadata extraction tests
@@ -283,19 +314,21 @@ d:\invaders 3.0\
 
 ## 7. REST & SSE API Reference
 
+Full reference with roles and request/response/error schemas: **[docs/API.md](docs/API.md)**.
+
 ### Canonical Blueprints Registered in `app.py`:
 
 | Blueprint | Base Path | Key Endpoints | Purpose |
 | :--- | :--- | :--- | :--- |
-| **`bp_collector`** | `/api/v1/collector` | `GET /status`, `GET /interfaces`, `POST /start`, `POST /stop`, `POST /pcap` | Live network packet capture, interface discovery, PCAP upload |
-| **`bp_events`** | `/api/v1/events` | `POST /` (single & batch) | Persist-first network event ingestion |
+| **`bp_collector`** | `/api/v1/collector` | `GET /status`, `GET /interfaces`, `POST /start`, `POST /stop`, `POST /pcap` | Network capture (POST = ADMIN), interface discovery, PCAP analysis |
+| **`bp_events`** | `/api/v1/events` | `POST /` (single & batch), `GET /`, `GET /stats`, `GET /<uuid>` | Network event ingestion; SOC event log with correlations |
 | **`bp_alerts`** | `/api/v1/alerts` | `GET /`, `GET /<id>`, `PATCH /<id>` | Alert triage, disposition update, SOC evidence |
 | **`bp_devices`** | `/api/v1/devices` | `GET /`, `GET /<id>/timeline`, `POST /<id>/flag` | Workstation profiles, timeline, quarantine toggle |
 | **`bp_model`** | `/api/v1/model` | `GET /status`, `POST /verify`, `POST /train`, `POST /thresholds`, `GET /features` | Model inspection, teammate model verification, hot-swapping |
-| **`bp_dataset`** | `/api/v1/dataset` | `GET /info`, `POST /upload`, `POST /convert` | Universal dataset ingestion (CIC-IDS, UNSW-NB15, Zeek) |
+| **`bp_dataset`** | `/api/v1/dataset` | `GET /info`, `GET /sample`, `POST /upload`, `POST /generate` | Universal dataset ingestion (CIC-IDS, UNSW-NB15, Zeek) |
 | **`bp_metrics`** | `/api/v1/metrics` | `GET /` | Operational metrics, collector telemetry, precision estimates |
 | **`bp_health`** | `/api/v1/health` | `GET /` | Live database ping query, collector mode, model availability |
-| **`bp_stream`** | `/api/v1/stream` | `GET /live`, `POST /start`, `/pause`, `/resume`, `/stop` | Server-Sent Events (SSE) feed and simulation replay |
+| **`bp_stream`** | `/api/v1/stream` | `GET /live`, `GET /status`, `POST /start`, `/pause`, `/resume`, `/stop` | Typed SSE feed (SOC only) and dataset replay controls (ADMIN) |
 | **`bp_auth`** | `/api/v1/auth` | `POST /login`, `GET /me`, `POST /logout` | Portal sessions (HttpOnly cookie) |
 | **`bp_files`** | `/api/v1/files` | `GET /?folder_id=`, `POST /`, `GET /<id>/download`, `GET /activity` | Employee file portal (EMPLOYEE role) |
 | **`bp_employees`** | `/api/v1/employees` | `GET /me` | Signed-in user profile and storage usage |
@@ -321,7 +354,16 @@ Settings in [config.py](file:///d:/invaders%203.0/config.py) configurable via en
 | `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated list for restricted environments). |
 | `MAX_CONTENT_LENGTH` | `104857600` (100 MB) | Maximum allowable payload size for file uploads. |
 | `MAX_PCAP_PACKETS` | `50000` | Upper limit on packet processing for PCAP uploads. |
-| `SOC_AUTH_REQUIRED` | `True` | Require a `SECURITY_ANALYST` session on SOC routes. |
+| `SOC_AUTH_REQUIRED` | `True` | Require a `SECURITY_ANALYST`/`ADMIN` session on SOC routes (and `ADMIN` for service operations). |
+| `DETECTOR_BACKEND` | `kitnet_baseline` | `none` disables inference (events stored as `detection_status=unavailable`). |
+| `INGEST_API_KEY` | *(empty)* | When set, `POST /api/v1/events` requires `X-Ingest-Key` (or an ADMIN session). |
+| `COLLECTOR_ALLOWED_INTERFACES` | *(any)* | Interfaces an operator may capture on. List only networks you are authorised to monitor. |
+| `COLLECTOR_PACKET_EVENTS` | `True` | Store one event per packet in addition to flows. |
+| `FLOW_IDLE_TIMEOUT_S` / `FLOW_ACTIVE_TIMEOUT_S` / `FLOW_MAX_TRACKED` | `30` / `300` / `10000` | Flow aggregation. |
+| `INTERNAL_NETWORKS` | RFC 1918 + CGNAT + loopback/link-local/ULA | Organisation address space for direction and "external" checks. |
+| `CORRELATION_WINDOW_S`, `APP_SERVER_PORTS`, `CORRELATION_ADDRESS_PROXIMITY` | `120`, `$PORT`, `True` | Correlation; see docs/EVENT_PIPELINE.md §6. |
+| `ZEEK_BIN` | `zeek` | Optional Zeek binary for PCAP TLS enrichment. |
+| `SSE_MAX_SUBSCRIBERS` / `SSE_HEARTBEAT_S` | `50` / `15` | Live stream limits. |
 | `AUTH_DATABASE_URL` | `sqlite:///instance/veylix_users.db` | Users + employee file portal database. |
 | `SEED_DEMO_USERS` | `True` | Create the 20 worker + 2 analyst accounts when the users database is empty. |
 | `SESSION_COOKIE_SECURE` | `False` | Set `True` when served over HTTPS. |
@@ -336,7 +378,7 @@ Settings in [config.py](file:///d:/invaders%203.0/config.py) configurable via en
 pip install -r requirements.txt
 ```
 
-### 2. Execute Automated Test Suite (57/57 Tests)
+### 2. Execute Automated Test Suite (113 backend + 24 frontend tests)
 Run any of the following commands in the project directory:
 
 ```bash
@@ -350,7 +392,14 @@ python -m pytest
 pytest
 ```
 
-**Complete Test Suite Breakdown (57 Total Tests Across 10 Test Modules):**
+Frontend (Vitest + Testing Library): `cd frontend && npm test`.
+
+The test suites build their apps against in-memory databases. Importing `app.py` no longer creates a
+production app against `instance/`; the module-level `app` is created lazily on first access.
+
+**Backend test modules:**
+- `tests/test_event_pipeline.py` (31 tests): application-activity outbox, idempotency, detector unavailable/disabled/unsupported, MOCKED detector interface, database and downstream failures, correlation (high/ambiguous/shared-address/low), collector live/failed/simulation/concurrency, PCAP, roles, ingestion key, health, SSE auth and cleanup, schema migration.
+- `tests/test_network_metadata.py` (17 tests): packet metadata, TLS/JA3 reference vector, GREASE, truncation, flow grouping/timeouts/eviction, Zeek log parsing.
 - `tests/test_api.py` (4 tests): Health, device listing & quarantine, stream simulation, alert filtering.
 - `tests/test_collector.py` (4 tests): Collector status, interface enumeration, start/stop, 5-tuple extraction.
 - `tests/test_errors_and_resilience.py` (9 tests): Corrupted packet handling, callback error isolation, PCAP error recovery, idempotent lifecycle, persist-first guarantee, live capture execution, startup failure stale sniffer cleanup, fallback mode verification, non-double-counting error metrics.
@@ -378,6 +427,12 @@ python app.py
 
 ## 10. Known Limitations
 
-1. **AI Model Integration**: The trained AI model is developed by a teammate; the backend is currently configured with the baseline model adapter and verification seam awaiting the teammate's final model checkpoint.
-2. **Raw Packet Capture Permissions**: Raw packet capture via Scapy requires OS-level packet capture drivers (WinPcap/Npcap on Windows, `CAP_NET_RAW` / root on Linux). In sandboxed or unprivileged CI environments, the collector gracefully runs in simulation mode.
-3. **Hackathon Prototype Authentication**: User authentication and API token validation are intentionally omitted in this hackathon prototype to allow seamless dashboard demonstration and integration testing.
+1. **AI model**: the final model is trained by a teammate and is not integrated. The bundled KitNET checkpoint is a
+   bootstrap baseline (`final_model: false`). Flow events have no compatible model (`unsupported`). See
+   docs/EVENT_PIPELINE.md §7 for the integration boundary.
+2. **Live capture** needs a capture provider (Npcap on Windows, libpcap plus `CAP_NET_RAW`/root on Linux). Without one,
+   the collector reports `failed` / `live_capture_available: false`; it does not fall back silently.
+3. **TLS**: there is no TCP reassembly (split ClientHellos give no JA3), and no JA4. Zeek enrichment applies to PCAP uploads only.
+4. **Correlation** is limited to the evidence the portal and collector actually have. Behind a reverse proxy, the
+   client address is the proxy's, so nothing is attributed.
+5. **Retention**: events are not expired automatically. With `COLLECTOR_PACKET_EVENTS=true`, live capture writes one row per packet.

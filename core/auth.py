@@ -3,11 +3,15 @@ Session authentication & role enforcement
 ==========================================
 • Sessions use Flask's signed cookie (HttpOnly, SameSite=Lax; Secure via config).
   Only the user id is stored in it — never credentials.
-• Roles: EMPLOYEE (file portal) and SECURITY_ANALYST (SOC dashboard).
+• Roles: EMPLOYEE (file portal), SECURITY_ANALYST (SOC dashboard, read + triage) and
+  ADMIN (SOC dashboard + service operations: collector, PCAP, replay, model management).
 • `role_required` protects individual routes; `install_soc_guard` protects every
   SOC blueprint by URL prefix so new SOC routes are covered automatically.
+• POST /api/v1/events (external ingestion) is not a SOC read: it is open by default
+  for the ingestion team, or requires X-Ingest-Key when INGEST_API_KEY is configured.
 """
 import csv
+import hmac
 import os
 import secrets
 import string
@@ -17,7 +21,7 @@ from flask import current_app, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from core.database import db
-from core.models import ROLE_ANALYST, ROLE_EMPLOYEE, StoredFile, User
+from core.models import ROLE_ADMIN, ROLE_ANALYST, ROLE_EMPLOYEE, SOC_ROLES, StoredFile, User
 
 # SOC data must never be readable by employees (or anonymous callers).
 SOC_PREFIXES = (
@@ -28,7 +32,21 @@ SOC_PREFIXES = (
     "/api/v1/model",
     "/api/v1/dataset",
     "/api/v1/collector",
+    "/api/v1/events",       # GET (event log); POST ingestion is handled separately below
 )
+
+# Service operations: any non-GET request under these prefixes needs ADMIN.
+OPERATOR_PREFIXES = (
+    "/api/v1/collector",
+    "/api/v1/stream",
+    "/api/v1/model",
+    "/api/v1/dataset",
+)
+INGEST_PATH = "/api/v1/events"
+
+
+def _under(path, prefixes):
+    return any(path == p or path.startswith(p + "/") for p in prefixes)
 
 
 def current_user():
@@ -62,16 +80,47 @@ def role_required(*roles):
     return decorator
 
 
+def soc_auth_enabled() -> bool:
+    return bool(current_app.config.get("SOC_AUTH_REQUIRED", True))
+
+
+def is_soc_viewer() -> bool:
+    """Signed-in analyst/admin, or SOC auth disabled (development/tests)."""
+    if not soc_auth_enabled():
+        return True
+    user = current_user()
+    return user is not None and user.role in SOC_ROLES
+
+
+def _ingest_allowed() -> bool:
+    key = current_app.config.get("INGEST_API_KEY") or ""
+    if not key:
+        return True
+    supplied = request.headers.get("X-Ingest-Key", "")
+    if supplied and hmac.compare_digest(supplied.encode(), key.encode()):
+        return True
+    user = current_user()
+    return user is not None and user.role == ROLE_ADMIN
+
+
 def install_soc_guard(app):
     @app.before_request
     def _soc_guard():
-        if request.method == "OPTIONS" or not current_app.config.get("SOC_AUTH_REQUIRED", True):
+        if request.method == "OPTIONS":
             return None
         path = request.path
-        if any(path == p or path.startswith(p + "/") for p in SOC_PREFIXES):
+        if path == INGEST_PATH and request.method == "POST":
+            if _ingest_allowed():
+                return None
+            return jsonify({"detail": "A valid X-Ingest-Key header is required for event ingestion."}), 401
+        if not soc_auth_enabled():
+            return None
+        if _under(path, SOC_PREFIXES):
             user = current_user()
-            if user is None or user.role != ROLE_ANALYST:
+            if user is None or user.role not in SOC_ROLES:
                 return _deny(user)
+            if request.method not in ("GET", "HEAD") and _under(path, OPERATOR_PREFIXES) and user.role != ROLE_ADMIN:
+                return jsonify({"detail": "This operation requires an administrator (collector operator) account."}), 403
         return None
 
 
@@ -87,6 +136,7 @@ DEPARTMENTS = [
     ("Management", "mgmt", 4),
 ]
 ANALYSTS = 2
+ADMIN_USERNAME = "admin01"
 _PASSWORD_ALPHABET = string.ascii_letters + string.digits
 
 
@@ -134,3 +184,34 @@ def seed_accounts(credentials_path: str) -> list:
         writer.writerow(["username", "password", "role", "department"])
         writer.writerows(created)
     return created
+
+
+def ensure_admin_account(credentials_path: str) -> list:
+    """
+    Create one ADMIN (collector operator) account when none exists — also for users
+    databases seeded before the ADMIN role existed. The random password is appended to
+    `credentials_path` (instance/, gitignored); only its hash is stored.
+    """
+    if User.query.filter_by(role=ROLE_ADMIN).first() is not None:
+        return []
+    username = ADMIN_USERNAME
+    if User.query.filter(db.func.lower(User.username) == username).first() is not None:
+        username = f"{ADMIN_USERNAME}-{secrets.token_hex(2)}"
+    password = _new_password()
+    db.session.add(User(
+        username=username,
+        password_hash=generate_password_hash(password),
+        display_name="SOC Administrator",
+        role=ROLE_ADMIN,
+        department="Security Operations",
+        email=f"{username}@veylix.local",
+    ))
+    db.session.commit()
+    os.makedirs(os.path.dirname(credentials_path), exist_ok=True)
+    new_file = not os.path.exists(credentials_path)
+    with open(credentials_path, "a", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        if new_file:
+            writer.writerow(["username", "password", "role", "department"])
+        writer.writerow([username, password, ROLE_ADMIN, "Security Operations"])
+    return [(username, password, ROLE_ADMIN, "Security Operations")]

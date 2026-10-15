@@ -2,9 +2,13 @@ import { z } from 'zod'
 
 export const roleSchema = z.preprocess(
   (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v),
-  z.enum(['EMPLOYEE', 'SECURITY_ANALYST']),
+  z.enum(['EMPLOYEE', 'SECURITY_ANALYST', 'ADMIN']),
 )
 export type Role = z.infer<typeof roleSchema>
+
+/** Roles that use the SOC workspace. ADMIN additionally operates the network collector. */
+export const SOC_ROLES: Role[] = ['SECURITY_ANALYST', 'ADMIN']
+export const canOperateCollector = (role?: Role | null) => role === 'ADMIN'
 
 /**
  * PROVISIONAL: shape of GET /api/v1/auth/me and GET /api/v1/employees/me.

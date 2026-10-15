@@ -56,9 +56,16 @@ def test_collector_interfaces(client):
 
 
 def test_collector_start_and_stop(client):
-    # Start capture
-    res_start = client.post("/api/v1/collector/start", json={"filter": "ip"})
+    # Live capture never starts on an implicit default interface
+    res_live = client.post("/api/v1/collector/start", json={"filter": "ip"})
+    assert res_live.status_code == 400
+    assert "interface" in res_live.get_json()["error"].lower()
+    client.post("/api/v1/collector/stop")  # clear the FAILED state
+
+    # Start (explicitly requested, labelled) simulation
+    res_start = client.post("/api/v1/collector/start", json={"filter": "ip", "mode": "simulation"})
     assert res_start.status_code == 200
+    assert res_start.get_json()["mode"] == "simulation"
     data_start = res_start.get_json()
     assert data_start["status"] in ("started", "running", "already_running")
 

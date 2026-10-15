@@ -1,7 +1,7 @@
 """
 Database Models — Person 4 Backend Spec
 ========================================
-Tables: events, alerts, devices, model_versions, analyst_actions
+Tables: events, alerts, devices, model_versions, analyst_actions, event_correlations
 
 Design goals:
   • Every ingested network event is persisted *before* the AI touches it.
@@ -37,6 +37,16 @@ _SIGNAL_PATTERNS = [
 ]
 
 
+def source_to_data_source(source):
+    """Event source → dashboard data_source (live | simulation | replay | pcap | unknown)."""
+    return {
+        "live_capture": "live",
+        "simulation": "simulation",
+        "dataset_replay": "replay",
+        "pcap": "pcap",
+    }.get(source or "", "unknown")
+
+
 def risk_factors_to_signals(factors):
     signals = []
     for label in factors or []:
@@ -48,10 +58,57 @@ def risk_factors_to_signals(factors):
 
 
 # ---------------------------------------------------------------------------
-# 1. Events — every raw ingested network event
+# Event envelope vocabulary (see README "Event pipeline")
+# ---------------------------------------------------------------------------
+EVENT_NETWORK_PACKET = "network_packet"        # one observed packet (live capture / PCAP / simulation)
+EVENT_NETWORK_FLOW = "network_flow"            # completed bidirectional flow built by the aggregator
+EVENT_NETWORK_RECORD = "network_record"        # externally supplied flow record (POST /events, dataset replay)
+EVENT_APPLICATION = "application_activity"     # portal file operation recorded by the application itself
+NETWORK_EVENT_TYPES = (EVENT_NETWORK_PACKET, EVENT_NETWORK_FLOW, EVENT_NETWORK_RECORD)
+# Each packet is also counted inside its flow, so traffic totals use flows + records only.
+TRAFFIC_EVENT_TYPES = (EVENT_NETWORK_FLOW, EVENT_NETWORK_RECORD)
+EVENT_TYPES = NETWORK_EVENT_TYPES + (EVENT_APPLICATION,)
+
+SOURCE_LIVE = "live_capture"
+SOURCE_PCAP = "pcap"
+SOURCE_SIMULATION = "simulation"
+SOURCE_REPLAY = "dataset_replay"
+SOURCE_API = "api"
+SOURCE_APPLICATION = "application"
+SOURCE_LEGACY = "legacy"                       # rows stored before the envelope existed
+
+# Detection status — never implies a verdict unless it is "scored".
+DETECTION_PENDING = "pending"
+DETECTION_SCORED = "scored"
+DETECTION_UNAVAILABLE = "unavailable"          # no detector loaded / detector disabled
+DETECTION_UNSUPPORTED = "unsupported"          # active detector does not accept this event type
+DETECTION_FAILED = "failed"
+DETECTION_NOT_APPLICABLE = "not_applicable"    # application evidence is never model input
+
+PROCESSING_STORED = "stored"
+PROCESSING_COMPLETE = "complete"
+PROCESSING_DOWNSTREAM_ERROR = "downstream_error"
+
+
+def _loads(raw, default=None):
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# 1. Events — every ingested network observation or application activity record
 # ---------------------------------------------------------------------------
 class Event(db.Model):
     __tablename__ = "events"
+    __table_args__ = (
+        db.Index("ix_events_type_received", "event_type", "received_at"),
+        # Unique index (not an inline constraint) so migrated databases get the identical object.
+        db.Index("uq_events_dedup_key", "dedup_key", unique=True),
+    )
 
     id          = db.Column(db.Integer, primary_key=True, autoincrement=True)
     event_uuid  = db.Column(db.String(64), unique=True, nullable=False, index=True)
@@ -60,9 +117,33 @@ class Event(db.Model):
     # Original event timestamp (from the source / dataset)
     event_time  = db.Column(db.DateTime, nullable=True)
 
-    # Network 5-tuple (encrypted header metadata — payload is NEVER stored)
-    src_ip      = db.Column(db.String(45), nullable=False, index=True)
-    dst_ip      = db.Column(db.String(45), nullable=False, index=True)
+    # Envelope
+    event_type  = db.Column(db.String(32), nullable=False, default=EVENT_NETWORK_RECORD)
+    source      = db.Column(db.String(32), nullable=False, default=SOURCE_API, index=True)
+    # Idempotency key (e.g. "file_activity:42", "flow:<id>"); NULL when the source has none.
+    dedup_key   = db.Column(db.String(160), nullable=True)
+    processing_status = db.Column(db.String(24), nullable=False, default=PROCESSING_STORED)
+    processing_error  = db.Column(db.Text, nullable=True)   # downstream (non-detector) failures
+    detection_status  = db.Column(db.String(24), nullable=False, default=DETECTION_PENDING, index=True)
+
+    # Identity — only set when reliably known (authenticated session / verified mapping)
+    user_id     = db.Column(db.Integer, nullable=True, index=True)  # users live in the auth database
+    device_id   = db.Column(db.String(64), nullable=True)
+
+    # Application activity
+    action      = db.Column(db.String(32), nullable=True)   # upload | download | denied …
+    outcome     = db.Column(db.String(16), nullable=True)   # success | denied | failed
+
+    # Network linkage
+    flow_id     = db.Column(db.String(40), nullable=True, index=True)
+    direction   = db.Column(db.String(16), nullable=True)   # outbound | inbound | internal | external
+    # Type-specific metadata (flow statistics, TLS handshake metadata, application context)
+    details_json = db.Column(db.Text, nullable=True)
+
+    # Network 5-tuple (encrypted header metadata — payload is NEVER stored).
+    # For application events src_ip is the client address seen by the portal server.
+    src_ip      = db.Column(db.String(45), nullable=True, index=True)
+    dst_ip      = db.Column(db.String(45), nullable=True, index=True)
     src_port    = db.Column(db.Integer, nullable=True)
     dst_port    = db.Column(db.Integer, nullable=True)
     protocol    = db.Column(db.String(10), default="TCP")
@@ -87,10 +168,31 @@ class Event(db.Model):
     # Relationship
     alert = db.relationship("Alert", backref=db.backref("source_events", lazy="dynamic"))
 
+    @property
+    def details(self):
+        return _loads(self.details_json, {}) or {}
+
     def to_dict(self, include_features=False):
+        details = self.details
+        tls = details.get("tls") or {}
+        is_network = self.event_type in NETWORK_EVENT_TYPES
+        is_flow = self.event_type == EVENT_NETWORK_FLOW
         d = {
             "id":               self.id,
             "event_uuid":       self.event_uuid,
+            "event_type":       self.event_type,
+            "source":           self.source,
+            "data_source":      source_to_data_source(self.source),
+            "processing_status": self.processing_status,
+            "processing_error": self.processing_error,
+            "detection_status": self.detection_status,
+            "user_id":          self.user_id,
+            "action":           self.action,
+            "outcome":          self.outcome,
+            "flow_id":          self.flow_id,
+            "direction":        self.direction,
+            "details":          details,
+            "tls_sni":          tls.get("sni"),
             "received_at":      self.received_at.isoformat() if self.received_at else None,
             "event_time":       self.event_time.isoformat() if self.event_time else None,
             "src_ip":           self.src_ip,
@@ -100,16 +202,20 @@ class Event(db.Model):
             "protocol":         self.protocol,
             "bytes_transferred":self.bytes_transferred,
             "packet_count":     self.packet_count,
-            "flow_duration":    round(self.flow_duration, 4),
+            "flow_duration":    round(self.flow_duration, 4) if self.flow_duration is not None else None,
             "ai_processed":     self.ai_processed,
             "ai_error":         self.ai_error,
             "anomaly_score":    round(self.anomaly_score, 6) if self.anomaly_score is not None else None,
             "alert_id":         self.alert_id,
             # Dashboard (NetworkEvent) contract
             "timestamp":        iso_utc(self.event_time or self.received_at),
-            "device_id":        self.src_ip,
-            "bytes_out":        self.bytes_transferred,
-            "packets_out":      self.packet_count,
+            # Network events: the device identifier is the source address (no identity implied).
+            # Application events: only a reliably known device, otherwise null.
+            "device_id":        self.device_id or (self.src_ip if is_network else None),
+            "bytes_out":        details.get("fwd_bytes", self.bytes_transferred) if is_flow else self.bytes_transferred,
+            "bytes_in":         details.get("bwd_bytes") if is_flow else None,
+            "packets_out":      details.get("fwd_packets", self.packet_count) if is_flow else self.packet_count,
+            "packets_in":       details.get("bwd_packets") if is_flow else None,
             "duration_seconds": round(self.flow_duration, 4) if self.flow_duration is not None else None,
         }
         if include_features and self.feature_vector_json:
@@ -144,6 +250,9 @@ class Alert(db.Model):
     dst_port    = db.Column(db.Integer, nullable=True)
     protocol    = db.Column(db.String(10), default="TCP")
     bytes_transferred = db.Column(db.BigInteger, default=0)
+
+    # Where the triggering event came from (live_capture, pcap, simulation, dataset_replay, api …)
+    source          = db.Column(db.String(32), nullable=True)
 
     # Contextual flags
     off_hours       = db.Column(db.Boolean, default=False)
@@ -184,6 +293,8 @@ class Alert(db.Model):
             "bytes_out":        self.bytes_transferred,
             "scoring_status":   "ok",
             "signals":          risk_factors_to_signals(self._parse_json(self.risk_factors_json)),
+            "source":           self.source,
+            "data_source":      source_to_data_source(self.source),
         }
 
     def to_dict(self):
@@ -298,6 +409,50 @@ class Device(db.Model):
 
 
 # ---------------------------------------------------------------------------
+# 3b. Event correlations — reviewable evidence links between application and network events
+# ---------------------------------------------------------------------------
+CORRELATION_APP_SERVER_CONNECTION = "app_server_connection"   # the flow IS the client's portal connection
+CORRELATION_ADDRESS_PROXIMITY = "address_time_proximity"      # same client address, external dst, close in time
+
+
+class EventCorrelation(db.Model):
+    __tablename__ = "event_correlations"
+    __table_args__ = (
+        db.UniqueConstraint("application_event_id", "network_event_id", name="uq_correlation_pair"),
+    )
+
+    id                   = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    correlation_uuid     = db.Column(db.String(64), unique=True, nullable=False)
+    application_event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False, index=True)
+    network_event_id     = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False, index=True)
+    user_id              = db.Column(db.Integer, nullable=True)
+    client_ip            = db.Column(db.String(45), nullable=True)
+    method               = db.Column(db.String(32), nullable=False)
+    confidence           = db.Column(db.String(16), nullable=False)   # high | low
+    time_delta_s         = db.Column(db.Float, nullable=True)         # network start − application time
+    rationale            = db.Column(db.Text, nullable=True)
+    created_at           = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    application_event = db.relationship("Event", foreign_keys=[application_event_id])
+    network_event     = db.relationship("Event", foreign_keys=[network_event_id])
+
+    def to_dict(self):
+        return {
+            "correlation_id":       self.correlation_uuid,
+            "application_event_id": self.application_event.event_uuid if self.application_event else None,
+            "network_event_id":     self.network_event.event_uuid if self.network_event else None,
+            "network_flow_id":      self.network_event.flow_id if self.network_event else None,
+            "user_id":              self.user_id,
+            "client_ip":            self.client_ip,
+            "method":               self.method,
+            "confidence":           self.confidence,
+            "time_delta_s":         round(self.time_delta_s, 3) if self.time_delta_s is not None else None,
+            "rationale":            self.rationale,
+            "created_at":           iso_utc(self.created_at),
+        }
+
+
+# ---------------------------------------------------------------------------
 # 4. Model Versions — track which model version produced which results
 # ---------------------------------------------------------------------------
 class ModelVersion(db.Model):
@@ -367,6 +522,10 @@ class AnalystAction(db.Model):
 # ---------------------------------------------------------------------------
 ROLE_EMPLOYEE = "EMPLOYEE"
 ROLE_ANALYST = "SECURITY_ANALYST"
+# Analyst capabilities plus service operations: collector start/stop, PCAP analysis,
+# dataset replay, model management.
+ROLE_ADMIN = "ADMIN"
+SOC_ROLES = (ROLE_ANALYST, ROLE_ADMIN)
 
 
 class User(db.Model):
@@ -455,6 +614,12 @@ class FileActivity(db.Model):
     file_name = db.Column(db.String(255), nullable=True)
     result    = db.Column(db.String(16), nullable=False)  # success | denied | failed
     detail    = db.Column(db.String(255), nullable=True)
+    # Outbox state for the matching application_activity event in the SOC database:
+    # pending → recorded | failed (failed/pending rows are retried later).
+    security_event_status = db.Column(db.String(16), nullable=True, index=True)
+    security_event_uuid   = db.Column(db.String(64), nullable=True)
+    # Outbox payload (client address, file id/size — never contents); cleared once recorded.
+    security_event_payload = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {

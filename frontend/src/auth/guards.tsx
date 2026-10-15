@@ -16,7 +16,8 @@ export const UI_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_UI_PREVIEW
  * Client-side route guards are a UX convenience only. Authorization is enforced by the backend
  * on every request; these guards never grant access to data.
  */
-export function RequireRole({ role }: { role: Role }) {
+export function RequireRole({ role }: { role: Role | Role[] }) {
+  const allowed = Array.isArray(role) ? role : [role]
   const { status, user } = useAuth()
   const location = useLocation()
 
@@ -31,7 +32,7 @@ export function RequireRole({ role }: { role: Role }) {
   if (status !== 'authenticated' || !user) {
     return <Navigate to={routes.login} replace state={{ from: location.pathname, reason: status }} />
   }
-  if (user.role !== role) {
+  if (!allowed.includes(user.role)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <StateBlock
