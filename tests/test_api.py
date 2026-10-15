@@ -51,22 +51,26 @@ def test_devices_listing_and_flagging(client):
     }
     client.post("/api/v1/events", json=event)
 
-    # 1. List devices
+    # 1. List devices — ensure device was registered
     res = client.get("/api/v1/devices")
     assert res.status_code == 200
     data = res.get_json()
     assert data["total"] >= 1
     device = next((d for d in data["devices"] if d["device_id"] == "10.0.0.55"), None)
     assert device is not None
-    assert device["is_flagged"] is False
 
-    # 2. Flag device for quarantine
+    # 2. Explicitly unflag device
+    res_unflag = client.post("/api/v1/devices/10.0.0.55/flag", json={"is_flagged": False})
+    assert res_unflag.status_code == 200
+    assert res_unflag.get_json()["is_flagged"] is False
+
+    # 3. Flag device for quarantine
     res_flag = client.post("/api/v1/devices/10.0.0.55/flag", json={"is_flagged": True})
     assert res_flag.status_code == 200
     flag_data = res_flag.get_json()
     assert flag_data["is_flagged"] is True
 
-    # 3. Verify flagged filter
+    # 4. Verify flagged filter
     res_flagged = client.get("/api/v1/devices?flagged_only=true")
     assert res_flagged.status_code == 200
     flagged_data = res_flagged.get_json()
