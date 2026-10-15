@@ -131,17 +131,68 @@ class EventProcessor:
     # ------------------------------------------------------------------
     @staticmethod
     def _norm(raw: Dict[str, Any]) -> Dict[str, Any]:
-        """Normalise heterogeneous field names into a canonical dict."""
+        """Normalise heterogeneous field names from BoT-IoT, CIC-IDS, UNSW-NB15, Zeek into a canonical dict."""
+        def _get_field(keys: list, default: Any = None) -> Any:
+            for k in keys:
+                if k in raw and raw[k] is not None:
+                    return raw[k]
+            # Case-insensitive fallback
+            raw_lower = {str(k).strip().lower(): v for k, v in raw.items()}
+            for k in keys:
+                kl = str(k).strip().lower()
+                if kl in raw_lower and raw_lower[kl] is not None:
+                    return raw_lower[kl]
+            return default
+
+        ts_raw = _get_field(["timestamp", "stime", "ts", "time", "date"], 0.0)
+        try:
+            ts_val = float(ts_raw)
+        except (ValueError, TypeError):
+            ts_val = 0.0
+
+        src_ip = str(_get_field(["src_ip", "saddr", "srcip", "source ip", "id.orig_h", "ipv4_src_addr", "src ip"], "0.0.0.0"))
+        dst_ip = str(_get_field(["dst_ip", "daddr", "dstip", "destination ip", "id.resp_h", "ipv4_dst_addr", "dst ip"], "0.0.0.0"))
+        
+        try:
+            src_port = int(_get_field(["src_port", "sport", "source port", "id.orig_p", "l4_src_port", "src port"], 0))
+        except (ValueError, TypeError):
+            src_port = 0
+            
+        try:
+            dst_port = int(_get_field(["dst_port", "dport", "dsport", "destination port", "id.resp_p", "l4_dst_port", "dst port"], 0))
+        except (ValueError, TypeError):
+            dst_port = 0
+
+        proto = str(_get_field(["protocol", "proto"], "tcp")).upper()
+        
+        bytes_raw = _get_field(["bytes", "length", "sbytes", "orig_bytes", "total length of fwd packets", "totlen", "in_bytes", "tot_bytes"], 0)
+        try:
+            bytes_val = int(float(bytes_raw))
+        except (ValueError, TypeError):
+            bytes_val = 0
+
+        pkts_raw = _get_field(["pkts", "packet_count", "spkts", "total fwd packets", "in_pkts", "tot_pkts"], 1)
+        try:
+            pkts_val = int(float(pkts_raw))
+        except (ValueError, TypeError):
+            pkts_val = 1
+
+        dur_raw = _get_field(["duration", "dur", "flow_duration", "flow duration"], 0.0)
+        try:
+            dur_val = float(dur_raw)
+        except (ValueError, TypeError):
+            dur_val = 0.0
+
         return {
-            "timestamp": float(raw.get("timestamp", raw.get("stime", 0.0))),
-            "src_ip":    str(raw.get("src_ip", raw.get("saddr", "0.0.0.0"))),
-            "dst_ip":    str(raw.get("dst_ip", raw.get("daddr", "0.0.0.0"))),
-            "src_port":  int(raw.get("src_port", raw.get("sport", 0))),
-            "dst_port":  int(raw.get("dst_port", raw.get("dport", 0))),
-            "protocol":  str(raw.get("protocol", raw.get("proto", "tcp"))).upper(),
-            "bytes":     int(raw.get("bytes", raw.get("length", raw.get("sbytes", 0)))),
-            "pkts":      int(raw.get("pkts", raw.get("packet_count", 1))),
-            "duration":  float(raw.get("dur", raw.get("flow_duration", 0.0))),
+            "timestamp": ts_val,
+            "src_ip":    src_ip,
+            "dst_ip":    dst_ip,
+            "src_port":  src_port,
+            "dst_port":  dst_port,
+            "protocol":  proto,
+            "bytes":     bytes_val,
+            "pkts":      pkts_val,
+            "duration":  dur_val,
         }
 
     # ------------------------------------------------------------------

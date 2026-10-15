@@ -32,10 +32,17 @@ class TrainingService:
             raise FileNotFoundError(f"Training dataset not found: {csv_path}")
 
         df = pd.read_csv(csv_path)
-        if "attack" in df.columns:
-            df = df[df["attack"] == 0]
-        elif "category" in df.columns:
-            df = df[df["category"].astype(str).str.lower() == "normal"]
+
+        # 1. Filter for normal / benign baseline across different dataset formats
+        cols_lower = {str(c).strip().lower(): c for c in df.columns}
+        for candidate in ["attack", "label", "category", "class", "is_attack", "threat"]:
+            if candidate in cols_lower:
+                col = cols_lower[candidate]
+                if np.issubdtype(df[col].dtype, np.number):
+                    df = df[df[col] == 0]
+                else:
+                    df = df[df[col].astype(str).str.strip().str.lower().isin(["normal", "benign", "0", "false"])]
+                break
 
         if max_rows and len(df) > max_rows:
             df = df.iloc[:max_rows]
@@ -44,18 +51,20 @@ class TrainingService:
         if total < 50:
             raise ValueError(f"Need ≥50 normal samples, got {total}")
 
-        # Feature extraction
+        # Feature extraction via EventProcessor canonical normalizer
+        from services.event_processor import EventProcessor
         extractor = AfterImage(lambdas=Config.AFTERIMAGE_LAMBDAS)
         features = []
         for _, row in df.iterrows():
+            norm = EventProcessor._norm(row.to_dict())
             flow = {
-                "timestamp": float(row.get("stime", row.get("timestamp", time.time()))),
-                "src_ip":    str(row.get("saddr", row.get("src_ip", "192.168.1.100"))),
-                "dst_ip":    str(row.get("daddr", row.get("dst_ip", "10.0.0.1"))),
-                "src_port":  int(row.get("sport", row.get("src_port", 49152))),
-                "dst_port":  int(row.get("dport", row.get("dst_port", 443))),
-                "protocol":  str(row.get("proto", row.get("protocol", "tcp"))),
-                "length":    float(row.get("bytes", row.get("length", 500.0))),
+                "timestamp": norm["timestamp"] or time.time(),
+                "src_ip":    norm["src_ip"],
+                "dst_ip":    norm["dst_ip"],
+                "src_port":  norm["src_port"],
+                "dst_port":  norm["dst_port"],
+                "protocol":  norm["protocol"].lower(),
+                "length":    float(norm["bytes"] or 500.0),
             }
             features.append(extractor.extract_from_flow(flow))
 
