@@ -1,0 +1,17 @@
+{
+  "_comment": "Organisational destination and egress policy used by the rule detectors (D1, D18, D20, D21, D23, D28). This is a STARTING TEMPLATE: review and maintain it for your organisation. Domain lists match observed TLS SNI only (suffix match); CIDR/IP entries match addresses. A trusted destination is not considered safe — it is compared against per-entity baselines (D18).",
+  "version": "2026-10-template",
+  "trusted_destinations": {
+    "cloud_storage": ["dropbox.com", "dropboxusercontent.com", "drive.google.com", "googleusercontent.com", "onedrive.live.com", "sharepoint.com", "box.com", "icloud.com", "amazonaws.com"],
+    "file_sharing": ["wetransfer.com", "mega.nz", "mediafire.com", "sendspace.com"],
+    "collaboration": ["slack.com", "slack-files.com", "teams.microsoft.com", "zoom.us", "github.com", "githubusercontent.com"]
+  },
+  "approved_bulk_destinations": [],
+  "rdp_approved_destinations": [],
+  "admin_ports": [22, 135, 139, 445, 3389, 5900, 5985, 5986],
+  "egress_rules": [
+    {"id": "EG-SMB-OUT", "description": "SMB / NetBIOS file sharing to external networks", "direction": "outbound", "protocols": ["TCP", "UDP"], "ports": [137, 138, 139, 445], "severity": "HIGH"},
+    {"id": "EG-TELNET-OUT", "description": "Cleartext Telnet to external networks", "direction": "outbound", "protocols": ["TCP"], "ports": [23], "severity": "MEDIUM"},
+    {"id": "EG-BLOCKED-DESTINATIONS", "description": "Destinations prohibited by organisational policy", "direction": "outbound", "domains": [], "cidrs": [], "severity": "HIGH"}
+  ]
+}

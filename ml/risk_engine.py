@@ -174,3 +174,62 @@ class RiskEngine:
             "off_hours": off_hours_flag,
             "risk_factors": risk_factors
         }
+
+
+# ---------------------------------------------------------------------------------------
+# Rule-signal combination policy (independent of the model path above)
+# ---------------------------------------------------------------------------------------
+RULE_GROUP_WEIGHTS = {
+    # Weight applied to a group's score before noisy-OR combination.
+    "exfiltration_volume": 1.0,
+    "multi_stage": 1.0,
+    "destination": 0.8,
+    "protocol": 0.8,
+    "identity": 0.8,
+    "behaviour": 0.6,
+}
+EVIDENCE_ONLY_CAP = 15.0        # contextual signals (e.g. first-seen destination) never dominate
+CORROBORATION_BONUS = 0.1       # within a group: +10% of each additional signal's score…
+CORROBORATION_CAP = 10.0        # …capped, so correlated indicators are not double-counted
+
+
+def combine_rule_signals(results):
+    """
+    Combine triggered *security* detector results into one rule score (0-100).
+
+    1. Each signal contributes its rule score; evidence-only signals are capped at 15.
+    2. Within a group (signals that measure related things, e.g. D1/D5/D6 volume), the
+       group score is the maximum plus a small, capped corroboration bonus — correlated
+       indicators are not summed.
+    3. Groups are combined with a weighted noisy-OR: 1 - Π(1 - w_g·s_g/100).
+    External destinations and HTTPS carry no risk by themselves: no detector scores them.
+    The result is a rule weighting, not a probability and not an AI anomaly score.
+    """
+    groups = {}
+    for r in results:
+        score = float(r["score"] or 0.0)
+        if r.get("evidence_only"):
+            score = min(score, EVIDENCE_ONLY_CAP)
+        groups.setdefault(r["group"], []).append(score)
+    group_scores = {}
+    for g, scores in groups.items():
+        scores.sort(reverse=True)
+        bonus = min(CORROBORATION_CAP, CORROBORATION_BONUS * sum(scores[1:]))
+        group_scores[g] = min(100.0, scores[0] + bonus)
+    remaining = 1.0
+    for g, s in group_scores.items():
+        remaining *= 1.0 - RULE_GROUP_WEIGHTS.get(g, 0.6) * s / 100.0
+    combined = round(100.0 * (1.0 - remaining), 1)
+    if combined >= 85:
+        severity = "CRITICAL"
+    elif combined >= 65:
+        severity = "HIGH"
+    elif combined >= 45:
+        severity = "MEDIUM"
+    else:
+        severity = "LOW"
+    return {"rule_score": combined, "severity": severity, "group_scores": group_scores,
+            "policy": "max-per-group + capped corroboration, weighted noisy-OR across groups"}
+
+
+RiskEngine.combine_rule_signals = staticmethod(combine_rule_signals)

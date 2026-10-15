@@ -21,6 +21,14 @@ capture) and, for live capture, against wall-clock time via `expire(now)`.
 Measurements that were not observed are reported as null, never estimated; e.g. a
 one-packet flow has null inter-arrival statistics.
 
+Orientation: `fwd`/`bwd` are initiator→responder / responder→initiator. Organisation
+direction (`org_direction`, `outbound_bytes`, `inbound_bytes`) is derived separately from
+INTERNAL_NETWORKS: outbound bytes are what the internal endpoint sent to the external one,
+whichever side opened the connection. Undefined (null) when both or neither side is internal.
+
+Per-direction size and inter-arrival histograms use fixed bins (bounded memory) and carry
+their Shannon entropy — no packet sequence or payload is retained.
+
 After a TCP close, the connection's trailing packets (the last ACK, retransmitted FINs)
 arriving within CLOSE_GRACE_S are attributed to the closed flow (`late_packets`) instead
 of opening a bogus one-packet flow. A SYN always starts a new flow.
@@ -30,6 +38,8 @@ import math
 import threading
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
+
+from services.network_metadata import org_orientation
 
 FLAG_NAMES = {"S": "syn", "A": "ack", "F": "fin", "R": "rst", "P": "psh", "U": "urg"}
 CLOSE_GRACE_S = 5.0
@@ -70,11 +80,88 @@ def canonical_key(meta: Dict[str, Any]) -> Tuple:
     return (meta.get("protocol") or "OTHER", lo, hi)
 
 
+# Fixed histogram edges (bounded memory; used for timing/size distribution statistics).
+IAT_EDGES_S = (0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0)   # 14 bins
+SIZE_EDGES_B = (64, 128, 256, 512, 768, 1024, 1280, 1400, 1500)                              # 10 bins
+MAX_DNS_NAMES = 10
+
+
+def _bin(value: float, edges) -> int:
+    for i, edge in enumerate(edges):
+        if value < edge:
+            return i
+    return len(edges)
+
+
+def shannon_entropy(counts) -> Optional[float]:
+    """Shannon entropy (bits) of a histogram; None for an empty histogram."""
+    total = sum(counts)
+    if total <= 0:
+        return None
+    return -sum((c / total) * math.log2(c / total) for c in counts if c > 0)
+
+
+def histogram_summary(counts, edges) -> Dict[str, Any]:
+    h = shannon_entropy(counts)
+    n_bins = len(edges) + 1
+    return {
+        "edges": list(edges),
+        "counts": list(counts),
+        "samples": int(sum(counts)),
+        "entropy_bits": round(h, 4) if h is not None else None,
+        # Entropy divided by log2(#bins): 0 = all samples in one bin, 1 = uniform.
+        "entropy_normalized": round(h / math.log2(n_bins), 4) if h is not None else None,
+    }
+
+
+class _Side:
+    """Per-direction statistics (initiator→responder or responder→initiator)."""
+    __slots__ = ("packets", "bytes", "last_ts", "iat", "size_hist", "iat_hist", "payload_packets", "app_hint", "mac")
+
+    def __init__(self):
+        self.packets = 0
+        self.bytes = 0
+        self.last_ts = None
+        self.iat = _RunningStats()
+        self.size_hist = [0] * (len(SIZE_EDGES_B) + 1)
+        self.iat_hist = [0] * (len(IAT_EDGES_S) + 1)
+        self.payload_packets = 0
+        self.app_hint = None
+        self.mac = None
+
+    def add(self, ts: float, size: int, meta):
+        if self.last_ts is not None:
+            gap = max(0.0, ts - self.last_ts)
+            self.iat.add(gap)
+            self.iat_hist[_bin(gap, IAT_EDGES_S)] += 1
+        self.last_ts = ts if self.last_ts is None else max(self.last_ts, ts)
+        self.packets += 1
+        self.bytes += size
+        self.size_hist[_bin(size, SIZE_EDGES_B)] += 1
+        if (meta.get("payload_bytes") or 0) > 0:
+            self.payload_packets += 1
+            if self.app_hint is None and meta.get("app_hint"):
+                self.app_hint = meta["app_hint"]
+        if self.mac is None and meta.get("src_mac"):
+            self.mac = meta["src_mac"]
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "packets": self.packets,
+            "bytes": self.bytes,
+            "payload_packets": self.payload_packets,
+            "inter_arrival_s": self.iat.as_dict(6),
+            "iat_histogram": histogram_summary(self.iat_hist, IAT_EDGES_S),
+            "size_histogram": histogram_summary(self.size_hist, SIZE_EDGES_B),
+            "app_hint": self.app_hint,
+        }
+
+
 class _Flow:
     __slots__ = (
         "key", "flow_id", "protocol", "init_ip", "init_port", "resp_ip", "resp_port",
-        "initiator_inferred", "start", "last", "fwd_packets", "bwd_packets", "fwd_bytes",
-        "bwd_bytes", "sizes", "iat", "flags", "fin_from", "rst", "tls",
+        "initiator_inferred", "start", "last", "fwd", "bwd", "sizes", "iat", "flags",
+        "fin_from", "rst_from", "syn_fwd", "synack_bwd", "tls", "dns",
     )
 
     def __init__(self, key, meta):
@@ -87,37 +174,48 @@ class _Flow:
         self.initiator_inferred = not (self.protocol == "TCP" and "S" in flags and "A" not in flags)
         self.start = self.last = float(meta["timestamp"])
         self.flow_id = hashlib.sha1(f"{key}|{self.start:.6f}".encode()).hexdigest()[:32]
-        self.fwd_packets = self.bwd_packets = 0
-        self.fwd_bytes = self.bwd_bytes = 0
+        self.fwd, self.bwd = _Side(), _Side()
         self.sizes = _RunningStats()
         self.iat = _RunningStats()
         self.flags = {name: 0 for name in FLAG_NAMES.values()}
         self.fin_from = set()
-        self.rst = False
+        self.rst_from = set()
+        self.syn_fwd = False
+        self.synack_bwd = False
         self.tls: Dict[str, Any] = {}
+        self.dns: Optional[Dict[str, Any]] = None
+
+    # Back-compat accessors used by callers/tests
+    @property
+    def fwd_packets(self):
+        return self.fwd.packets
+
+    @property
+    def bwd_packets(self):
+        return self.bwd.packets
 
     def add(self, meta):
         ts = float(meta["timestamp"])
-        if self.fwd_packets + self.bwd_packets > 0:
+        if self.fwd.packets + self.bwd.packets > 0:
             self.iat.add(max(0.0, ts - self.last))
         self.last = max(self.last, ts)
         size = int(meta.get("bytes") or 0)
         self.sizes.add(size)
         forward = meta["src_ip"] == self.init_ip and meta.get("src_port") == self.init_port
-        if forward:
-            self.fwd_packets += 1
-            self.fwd_bytes += size
-        else:
-            self.bwd_packets += 1
-            self.bwd_bytes += size
-        for letter in meta.get("tcp_flags") or "":
+        (self.fwd if forward else self.bwd).add(ts, size, meta)
+        flags = meta.get("tcp_flags") or ""
+        for letter in flags:
             name = FLAG_NAMES.get(letter)
             if name:
                 self.flags[name] += 1
-        if "F" in (meta.get("tcp_flags") or ""):
+        if "S" in flags and "A" not in flags and forward:
+            self.syn_fwd = True
+        if "S" in flags and "A" in flags and not forward:
+            self.synack_bwd = True
+        if "F" in flags:
             self.fin_from.add("fwd" if forward else "bwd")
-        if "R" in (meta.get("tcp_flags") or ""):
-            self.rst = True
+        if "R" in flags:
+            self.rst_from.add("fwd" if forward else "bwd")
         tls = meta.get("tls")
         if tls:
             # Keep the first ClientHello / ServerHello fields; never overwrite with later ones.
@@ -128,30 +226,87 @@ class _Flow:
                 self.tls.setdefault(k if k in ("sni", "ja3", "ja3_string") else f"{side}_{k}", v)
             self.tls.setdefault("extraction_source", tls.get("extraction_source", "builtin"))
             self.tls[f"{side}_hello_complete"] = bool(tls.get("complete"))
+        dns = meta.get("dns")
+        if dns:
+            d = self.dns or {"queries": 0, "responses": 0, "nxdomain": 0, "qtypes": {}, "names": [], "answers": 0}
+            if dns.get("is_response"):
+                d["responses"] += 1
+                d["answers"] += int(dns.get("answers") or 0)
+                if dns.get("rcode") == "NXDOMAIN":
+                    d["nxdomain"] += 1
+            else:
+                d["queries"] += 1
+                qt = str(dns.get("qtype"))
+                d["qtypes"][qt] = d["qtypes"].get(qt, 0) + 1
+            name = dns.get("qname")
+            if name and name not in d["names"] and len(d["names"]) < MAX_DNS_NAMES:
+                d["names"].append(name)
+            self.dns = d
 
     @property
     def closed(self) -> bool:
-        return self.rst or self.fin_from == {"fwd", "bwd"}
+        return bool(self.rst_from) or self.fin_from == {"fwd", "bwd"}
+
+    def tcp_outcome(self) -> Optional[str]:
+        if self.protocol != "TCP":
+            return None
+        if self.synack_bwd:
+            return "established"
+        if self.syn_fwd and self.bwd.packets == 0:
+            return "no_response"
+        if self.syn_fwd and "bwd" in self.rst_from:
+            return "rejected"
+        if self.fwd.packets and self.bwd.packets:
+            return "established_midstream"   # handshake not observed (capture started mid-connection)
+        return "partial"
 
     def to_event(self, end_reason: str) -> Dict[str, Any]:
-        total = self.fwd_packets + self.bwd_packets
+        total = self.fwd.packets + self.bwd.packets
+        orient = org_orientation(self.init_ip, self.resp_ip)
+        side = orient["internal_side"]
+        # Organisation-relative bytes: what the internal endpoint sent out vs received,
+        # regardless of which side initiated. Only defined with exactly one internal side.
+        if side == "a":
+            out_s, in_s, internal_ip, external_ip = self.fwd, self.bwd, self.init_ip, self.resp_ip
+        elif side == "b":
+            out_s, in_s, internal_ip, external_ip = self.bwd, self.fwd, self.resp_ip, self.init_ip
+        else:
+            out_s = in_s = None
+            internal_ip = self.init_ip if side == "both" else None
+            external_ip = None
         details = {
             "start_time": self.start,
             "end_time": self.last,
+            "duration_s": round(self.last - self.start, 6),
             "end_reason": end_reason,
             "initiator_inferred": self.initiator_inferred,
+            "org_direction": orient["direction"],
+            "internal_ip": internal_ip,
+            "external_ip": external_ip,
+            "outbound_bytes": out_s.bytes if out_s else None,
+            "inbound_bytes": in_s.bytes if in_s else None,
+            "outbound_packets": out_s.packets if out_s else None,
+            "inbound_packets": in_s.packets if in_s else None,
             "total_packets": total,
-            "fwd_packets": self.fwd_packets,
-            "bwd_packets": self.bwd_packets,
-            "total_bytes": self.fwd_bytes + self.bwd_bytes,
-            "fwd_bytes": self.fwd_bytes,
-            "bwd_bytes": self.bwd_bytes,
+            "fwd_packets": self.fwd.packets,
+            "bwd_packets": self.bwd.packets,
+            "total_bytes": self.fwd.bytes + self.bwd.bytes,
+            "fwd_bytes": self.fwd.bytes,
+            "bwd_bytes": self.bwd.bytes,
             "packet_size": self.sizes.as_dict(2),
             "inter_arrival_s": self.iat.as_dict(6),
+            "fwd": self.fwd.summary(),
+            "bwd": self.bwd.summary(),
             "tcp_flags": dict(self.flags) if self.protocol == "TCP" else None,
+            "tcp_outcome": self.tcp_outcome(),
+            "app_protocol": ("dns" if self.dns else None) or self.fwd.app_hint or self.bwd.app_hint,
+            "init_mac": self.fwd.mac,
+            "resp_mac": self.bwd.mac,
         }
         if self.tls:
             details["tls"] = dict(self.tls)
+        if self.dns:
+            details["dns"] = dict(self.dns)
         return {
             "event_type": "network_flow",
             "flow_id": self.flow_id,
@@ -161,9 +316,10 @@ class _Flow:
             "src_port": self.init_port,
             "dst_port": self.resp_port,
             "protocol": self.protocol,
-            "bytes": self.fwd_bytes + self.bwd_bytes,
+            "bytes": self.fwd.bytes + self.bwd.bytes,
             "pkts": total,
             "duration": round(self.last - self.start, 6),
+            "direction": orient["direction"],
             "details": details,
         }
 
