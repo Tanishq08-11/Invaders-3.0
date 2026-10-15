@@ -30,8 +30,8 @@ def ingest_events():
     that was generated and the XAI explanation.
     """
     data = request.get_json(silent=True)
-    if data is None:
-        return jsonify({"error": "Request body must be valid JSON"}), 400
+    if data is None or not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a valid JSON object"}), 400
 
     processor = EventProcessor.get_instance()
 
@@ -40,7 +40,11 @@ def ingest_events():
         events_list = data["events"]
         if not events_list:
             return jsonify({"error": "The 'events' array is empty"}), 400
-        result = processor.ingest_batch(events_list)
+        # Filter for dict events only
+        valid_events = [e for e in events_list if isinstance(e, dict)]
+        if not valid_events:
+            return jsonify({"error": "No valid event objects in 'events' array"}), 400
+        result = processor.ingest_batch(valid_events)
         return jsonify(result), 201
 
     # --- Single event (the dict itself is the event) ---
@@ -51,5 +55,8 @@ def ingest_events():
         }), 400
 
     result = processor.ingest(data)
+    if "error" in result and "id" not in result:
+        return jsonify(result), 400
+
     status_code = 201 if result.get("ai_processed") else 202  # 202 if AI didn't run
     return jsonify(result), status_code

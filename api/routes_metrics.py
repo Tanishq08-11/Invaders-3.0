@@ -92,23 +92,29 @@ def get_metrics():
 
     model_info = {
         "active_version":  active_model.to_dict() if active_model else None,
-        "kitnet_phase":    proc.kitnet.phase,
-        "input_dimension": proc.kitnet.input_dim,
-        "num_clusters":    len(proc.kitnet.clusters),
-        "baseline_mean":   round(proc.kitnet.baseline_mean, 6),
-        "baseline_std":    round(proc.kitnet.baseline_std, 6),
-        "baseline_max":    round(proc.kitnet.baseline_max, 6),
+        "kitnet_phase":    getattr(proc.kitnet, "phase", "active") if proc.kitnet else "unavailable",
+        "input_dimension": getattr(proc.kitnet, "input_dim", 100) if proc.kitnet else 0,
+        "num_clusters":    len(getattr(proc.kitnet, "clusters", [])) if proc.kitnet else 0,
+        "baseline_mean":   round(getattr(proc.kitnet, "baseline_mean", 0.0), 6) if proc.kitnet else 0.0,
+        "baseline_std":    round(getattr(proc.kitnet, "baseline_std", 1.0), 6) if proc.kitnet else 0.0,
+        "baseline_max":    round(getattr(proc.kitnet, "baseline_max", 10.0), 6) if proc.kitnet else 0.0,
         "thresholds": {
             "z_low":  proc.risk_engine.z_low,
             "z_med":  proc.risk_engine.z_med,
             "z_high": proc.risk_engine.z_high,
             "z_crit": proc.risk_engine.z_crit,
-        },
+        } if proc.risk_engine else None,
     }
+
+    # --- collector telemetry ---
+    from services.live_collector import LiveCollector
+    collector = LiveCollector.get_instance()
+    collector_metrics = collector.get_status()
 
     return jsonify({
         "system":      system,
         "database":    db_counters,
+        "collector":   collector_metrics,
         "model":       model_info,
         "evaluation":  evaluation,
         "severity_distribution": severity_dist,

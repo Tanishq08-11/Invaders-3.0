@@ -36,8 +36,13 @@ def test_collector_status(client):
     assert res.status_code == 200
     data = res.get_json()
     assert "is_capturing" in data
+    assert "mode" in data
+    assert "is_live" in data
+    assert "is_simulated" in data
     assert "packets_captured" in data
     assert "events_ingested" in data
+    assert "processing_errors" in data
+    assert "collector_errors" in data
     assert "throughput_pps" in data
 
 

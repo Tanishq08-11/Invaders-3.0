@@ -23,13 +23,13 @@ def model_status():
 
     return jsonify({
         "is_model_loaded": proc.model_loaded,
-        "phase": kitnet.phase if kitnet else None,
-        "input_dimension": kitnet.input_dim if kitnet else None,
-        "num_clusters": len(kitnet.clusters) if kitnet else 0,
-        "cluster_sizes": [len(c) for c in kitnet.clusters] if kitnet else [],
-        "baseline_mean_error": round(kitnet.baseline_mean, 5) if kitnet else None,
-        "baseline_std_error": round(kitnet.baseline_std, 5) if kitnet else None,
-        "baseline_max_error": round(kitnet.baseline_max, 5) if kitnet else None,
+        "phase": getattr(kitnet, "phase", "active") if kitnet else None,
+        "input_dimension": getattr(kitnet, "input_dim", 100) if kitnet else None,
+        "num_clusters": len(getattr(kitnet, "clusters", [])) if kitnet else 0,
+        "cluster_sizes": [len(c) for c in getattr(kitnet, "clusters", [])] if kitnet else [],
+        "baseline_mean_error": round(getattr(kitnet, "baseline_mean", 0.0), 5) if kitnet else None,
+        "baseline_std_error": round(getattr(kitnet, "baseline_std", 1.0), 5) if kitnet else None,
+        "baseline_max_error": round(getattr(kitnet, "baseline_max", 10.0), 5) if kitnet else None,
         "active_baseline_meta": active_baseline.to_dict() if active_baseline else None,
         "thresholds": {
             "z_low": proc.risk_engine.z_low,

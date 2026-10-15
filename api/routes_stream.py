@@ -33,7 +33,9 @@ def live_sse():
                     yield f"data: {json.dumps(event, default=str)}\n\n"
                 except Exception:
                     yield ": heartbeat\n\n"
-        except GeneratorExit:
+        except (GeneratorExit, Exception):
+            pass
+        finally:
             proc.unsubscribe(q)
 
     return Response(

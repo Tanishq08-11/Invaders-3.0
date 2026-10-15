@@ -210,3 +210,122 @@ def test_live_environment_capture_execution():
     assert stop_info["status"] == "stopped"
     assert stop_info["packets_captured"] >= 1
     assert stop_info["duration_s"] > 0
+
+
+def test_collector_startup_failure_clears_stale_sniffer(monkeypatch):
+    """
+    Validates Requirement 3: When Scapy startup fails:
+    - Record actual failure
+    - Clear invalid or stale sniffer references
+    - Report stopped state when fallback is disabled
+    """
+    collector = LiveCollector.get_instance()
+    collector.stop_capture()
+
+    class FailingSniffer:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            raise PermissionError("Raw socket privilege denied: CAP_NET_RAW required")
+
+    import services.live_collector
+    monkeypatch.setattr(services.live_collector, "AsyncSniffer", FailingSniffer)
+
+    res = collector.start_live_capture(allow_fallback=False)
+    assert res["status"] == "error"
+    assert res["mode"] == "stopped"
+    assert collector.is_running is False
+    assert collector._sniffer is None
+    assert "privilege denied" in (collector.last_collector_error or "").lower()
+
+
+def test_collector_startup_failure_explicit_fallback(monkeypatch):
+    """
+    Validates Requirement 3: When Scapy fails and fallback is enabled:
+    - Switch to simulation explicitly
+    - Never report simulation as successful live capture
+    - Clear stale sniffer reference
+    """
+    collector = LiveCollector.get_instance()
+    collector.stop_capture()
+
+    class FailingSniffer:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            raise RuntimeError("Npcap driver missing")
+
+    import services.live_collector
+    monkeypatch.setattr(services.live_collector, "AsyncSniffer", FailingSniffer)
+
+    res = collector.start_live_capture(allow_fallback=True)
+    assert res["status"] == "started"
+    assert res["mode"] == "simulation"
+    assert res["scapy_live"] is False
+    assert "warning" in res
+    assert collector._sniffer is None
+    assert collector.is_running is True
+
+    collector.stop_capture()
+
+
+def test_failed_ingestion_not_counted_as_success():
+    """
+    Validates Requirement 4:
+    - Failed ingestion attempts increment processing_errors
+    - Do NOT count a failed ingestion as a successful ingestion
+    - Packets observed vs events successfully ingested are cleanly separated
+    """
+    collector = LiveCollector.get_instance()
+    collector.stop_capture()
+
+    collector.packets_captured = 0
+    collector.events_ingested = 0
+    collector.processing_errors_count = 0
+
+    # Callback returns error dict
+    def error_callback(meta):
+        return {"error": "Database constraint violation"}
+
+    collector.set_ingest_callback(error_callback)
+    collector.is_running = True
+
+    try:
+        from scapy.all import IP, TCP
+        pkt = IP(src="192.168.1.1", dst="10.0.0.1") / TCP(sport=5000, dport=80)
+    except Exception:
+        class DummyLayer:
+            src = "192.168.1.1"
+            dst = "10.0.0.1"
+            sport = 5000
+            dport = 80
+        class DummyPkt:
+            def haslayer(self, layer):
+                return True
+            def __getitem__(self, layer):
+                return DummyLayer()
+            def __len__(self):
+                return 100
+        pkt = DummyPkt()
+
+    collector._on_packet(pkt)
+
+    assert collector.packets_captured == 1
+    assert collector.events_ingested == 0  # NOT counted as success
+    assert collector.processing_errors_count == 1
+    assert "Database constraint violation" in (collector.last_processing_error or "")
+
+    # Now with successful callback
+    def success_callback(meta):
+        return {"id": 123, "ai_processed": True}
+
+    collector.set_ingest_callback(success_callback)
+    collector._on_packet(pkt)
+
+    assert collector.packets_captured == 2
+    assert collector.events_ingested == 1  # Now incremented by 1
+    assert collector.processing_errors_count == 1  # Remains 1
+
+    collector.set_ingest_callback(None)
+    collector.stop_capture()
+

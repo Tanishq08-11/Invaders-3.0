@@ -234,8 +234,17 @@ class EventProcessor:
             ai_error=None,
             anomaly_score=None,
         )
-        db.session.add(event_row)
-        db.session.flush()  # get event_row.id before we might need it
+        try:
+            db.session.add(event_row)
+            db.session.flush()  # get event_row.id before we might need it
+        except Exception as db_exc:
+            db.session.rollback()
+            self.events_failed += 1
+            return {
+                "error": f"Database write error: {str(db_exc)}",
+                "ai_processed": False,
+                "anomaly_score": None
+            }
 
         # 2. Run the AI pipeline -----------------------------------------
         anomaly_score = None
@@ -332,7 +341,16 @@ class EventProcessor:
         self._upsert_device(norm, risk_eval, is_threat)
 
         # 5. Commit everything atomically ---------------------------------
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as db_exc:
+            db.session.rollback()
+            self.events_failed += 1
+            return {
+                "error": f"Database commit error: {str(db_exc)}",
+                "ai_processed": False,
+                "anomaly_score": None
+            }
 
         # 6. Build response ------------------------------------------------
         result = event_row.to_dict()

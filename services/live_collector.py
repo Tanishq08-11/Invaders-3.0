@@ -8,8 +8,9 @@ and automatically feeds it into the EventProcessor pipeline.
 Features:
   1. Live interface sniffing via Scapy (AsyncSniffer).
   2. Offline PCAP / PCAPNG packet stream ingestion.
-  3. Safe fallback driver for headless CI / review environments without root / Npcap.
-  4. Real-time packet-to-metadata extraction and direct pipeline ingestion.
+  3. Explicit operating modes: "stopped", "live", "simulation".
+  4. Safe fallback driver for headless CI / review environments without root / Npcap.
+  5. Accurate error tracking: separate packet, ingestion, and processing error counters.
 """
 import os
 import time
@@ -28,6 +29,7 @@ except Exception:
 class LiveCollector:
     """
     Background network packet collector and metadata extractor.
+    Tracks operating modes: "stopped", "live", "simulation".
     """
     _instance: Optional["LiveCollector"] = None
     _lock = threading.Lock()
@@ -40,11 +42,13 @@ class LiveCollector:
             return cls._instance
 
     def __init__(self):
-        self.is_running = False
+        self.is_running: bool = False
+        self.mode: str = "stopped"  # "stopped", "live", "simulation"
         self.active_interface: Optional[str] = None
         self.bpf_filter: str = "ip"
         self.packets_captured: int = 0
         self.bytes_captured: int = 0
+        self.events_ingested: int = 0
         self.corrupted_packets_count: int = 0
         self.collector_errors_count: int = 0
         self.processing_errors_count: int = 0
@@ -56,7 +60,7 @@ class LiveCollector:
         self._stop_event = threading.Event()
         self._ingest_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
 
-    def set_ingest_callback(self, callback: Callable[[Dict[str, Any]], Any]):
+    def set_ingest_callback(self, callback: Optional[Callable[[Dict[str, Any]], Any]]):
         """Sets callback function invoked with every extracted packet metadata."""
         self._ingest_callback = callback
 
@@ -144,105 +148,241 @@ class LiveCollector:
             self.bytes_captured += meta.get("bytes", 0)
 
             # Ingest through callback or default EventProcessor
+            res = None
             try:
                 if self._ingest_callback:
-                    self._ingest_callback(meta)
+                    res = self._ingest_callback(meta)
                 else:
-                    self._default_ingest(meta)
+                    res = self._default_ingest(meta)
             except Exception as proc_exc:
                 self.processing_errors_count += 1
                 self.last_processing_error = str(proc_exc)
+                return
+
+            # Detect failure returned as error dictionary
+            if isinstance(res, dict) and ("error" in res or res.get("ai_error")):
+                self.processing_errors_count += 1
+                self.last_processing_error = str(res.get("error") or res.get("ai_error"))
+            else:
+                self.events_ingested += 1
 
         except Exception as coll_exc:
             self.collector_errors_count += 1
             self.last_collector_error = str(coll_exc)
 
     # ------------------------------------------------------------------
-    # Live Interface Sniffing
+    # Live Interface Sniffing & Operating Mode Management
     # ------------------------------------------------------------------
     def start_live_capture(
         self,
         interface: Optional[str] = None,
         bpf_filter: str = "ip",
         count: int = 0,
-        simulate: bool = False
+        simulate: bool = False,
+        allow_fallback: bool = True
     ) -> Dict[str, Any]:
         """
-        Starts non-blocking live packet capture on the selected network adapter.
+        Starts live packet capture or simulation.
+        Explicitly tracks and distinguishes operating modes:
+          - "live": actual Scapy sniffer active on network interface
+          - "simulation": simulated event generator active
+          - "stopped": capture inactive or startup failed
         """
         if self.is_running:
             return {
                 "status": "already_running",
+                "mode": self.mode,
                 "interface": self.active_interface,
-                "packets_captured": self.packets_captured
+                "packets_captured": self.packets_captured,
+                "events_ingested": self.events_ingested
             }
 
         self.active_interface = interface or (conf.iface.name if SCAPY_AVAILABLE else "default")
         self.bpf_filter = bpf_filter
         self.packets_captured = 0
         self.bytes_captured = 0
+        self.events_ingested = 0
         self.start_time = time.time()
         self._stop_event.clear()
-        self.is_running = True
 
+        # 1. Explicit Simulation Mode Requested
         if simulate:
-            self._start_simulated_live_worker("Simulation mode requested")
-        elif SCAPY_AVAILABLE:
             try:
-                self._sniffer = AsyncSniffer(
+                self._start_simulated_live_worker("Simulation mode explicitly requested")
+                self.is_running = True
+                self.mode = "simulation"
+                return {
+                    "status": "started",
+                    "mode": "simulation",
+                    "interface": "simulated",
+                    "filter": self.bpf_filter,
+                    "scapy_live": False
+                }
+            except Exception as sim_exc:
+                self.is_running = False
+                self.mode = "stopped"
+                self.collector_errors_count += 1
+                self.last_collector_error = f"Failed to start simulation worker: {sim_exc}"
+                return {
+                    "status": "error",
+                    "mode": "stopped",
+                    "error": self.last_collector_error
+                }
+
+        # 2. Live Capture Requested
+        if SCAPY_AVAILABLE:
+            self._sniffer = None
+            try:
+                sniffer = AsyncSniffer(
                     iface=interface,
                     filter=bpf_filter,
                     prn=self._on_packet,
                     count=count,
                     store=False
                 )
-                self._sniffer.start()
+                sniffer.start()
+                # Report live capture ONLY after successful start
+                self._sniffer = sniffer
+                self.is_running = True
+                self.mode = "live"
+                return {
+                    "status": "started",
+                    "mode": "live",
+                    "interface": str(self.active_interface),
+                    "filter": self.bpf_filter,
+                    "scapy_live": True
+                }
             except Exception as exc:
-                # Fallback to simulated live worker if Npcap/WinPcap permissions restricted
-                self._start_simulated_live_worker(str(exc))
-        else:
-            self._start_simulated_live_worker("Scapy module unavailable")
+                # Clear stale sniffer reference and record error
+                self._sniffer = None
+                self.collector_errors_count += 1
+                self.last_collector_error = f"Scapy startup failed: {str(exc)}"
 
-        return {
-            "status": "started",
-            "interface": str(self.active_interface),
-            "filter": self.bpf_filter,
-            "scapy_live": self._sniffer is not None
-        }
+                if allow_fallback:
+                    try:
+                        self._start_simulated_live_worker(f"Fallback after Scapy failure: {exc}")
+                        self.is_running = True
+                        self.mode = "simulation"
+                        return {
+                            "status": "started",
+                            "mode": "simulation",
+                            "interface": "simulated (fallback)",
+                            "filter": self.bpf_filter,
+                            "scapy_live": False,
+                            "warning": f"Live capture failed ({exc}); running in simulation mode"
+                        }
+                    except Exception as fb_exc:
+                        self.is_running = False
+                        self.mode = "stopped"
+                        self.last_collector_error = f"Live capture failed ({exc}) and fallback failed: {fb_exc}"
+                        return {
+                            "status": "error",
+                            "mode": "stopped",
+                            "error": self.last_collector_error
+                        }
+                else:
+                    self.is_running = False
+                    self.mode = "stopped"
+                    return {
+                        "status": "error",
+                        "mode": "stopped",
+                        "error": self.last_collector_error
+                    }
+        else:
+            self.collector_errors_count += 1
+            self.last_collector_error = "Scapy module unavailable on host"
+            if allow_fallback:
+                try:
+                    self._start_simulated_live_worker("Scapy unavailable")
+                    self.is_running = True
+                    self.mode = "simulation"
+                    return {
+                        "status": "started",
+                        "mode": "simulation",
+                        "interface": "simulated (fallback)",
+                        "filter": self.bpf_filter,
+                        "scapy_live": False,
+                        "warning": "Scapy unavailable; running in simulation mode"
+                    }
+                except Exception as fb_exc:
+                    self.is_running = False
+                    self.mode = "stopped"
+                    return {
+                        "status": "error",
+                        "mode": "stopped",
+                        "error": f"Fallback simulation failed: {fb_exc}"
+                    }
+            else:
+                self.is_running = False
+                self.mode = "stopped"
+                return {
+                    "status": "error",
+                    "mode": "stopped",
+                    "error": "Scapy module unavailable on host"
+                }
 
     def _start_simulated_live_worker(self, reason: str):
-        """Fallback live background generator for restricted/headless environments."""
+        """
+        Background live simulated event generator.
+        Protected against callback exceptions so individual errors do not terminate the worker.
+        """
         def _worker():
             import random
-            from data.dataset_generator import generate_botiot_datasets
             while not self._stop_event.is_set():
-                meta = {
-                    "timestamp": time.time(),
-                    "src_ip": f"192.168.1.{random.choice([18, 45, 105, 77])}",
-                    "dst_ip": random.choice(["142.250.190.46", "172.217.16.206", "45.33.32.156"]),
-                    "src_port": random.randint(49152, 65535),
-                    "dst_port": random.choice([443, 80, 53, 22]),
-                    "protocol": "TCP",
-                    "bytes": random.randint(120, 1500),
-                    "duration": 0.05
-                }
-                self.packets_captured += 1
-                self.bytes_captured += meta["bytes"]
-                if self._ingest_callback:
-                    self._ingest_callback(meta)
-                else:
-                    self._default_ingest(meta)
-                time.sleep(1.0)
+                try:
+                    meta = {
+                        "timestamp": time.time(),
+                        "src_ip": f"192.168.1.{random.choice([18, 45, 105, 77])}",
+                        "dst_ip": random.choice(["142.250.190.46", "172.217.16.206", "45.33.32.156"]),
+                        "src_port": random.randint(49152, 65535),
+                        "dst_port": random.choice([443, 80, 53, 22]),
+                        "protocol": "TCP",
+                        "bytes": random.randint(120, 1500),
+                        "duration": 0.05
+                    }
+                    self.packets_captured += 1
+                    self.bytes_captured += meta["bytes"]
+
+                    res = None
+                    try:
+                        if self._ingest_callback:
+                            res = self._ingest_callback(meta)
+                        else:
+                            res = self._default_ingest(meta)
+                    except Exception as cb_exc:
+                        self.processing_errors_count += 1
+                        self.last_processing_error = str(cb_exc)
+                        if self._stop_event.wait(timeout=1.0):
+                            break
+                        continue
+
+                    if isinstance(res, dict) and ("error" in res or res.get("ai_error")):
+                        self.processing_errors_count += 1
+                        self.last_processing_error = str(res.get("error") or res.get("ai_error"))
+                    else:
+                        self.events_ingested += 1
+
+                except Exception as worker_exc:
+                    self.collector_errors_count += 1
+                    self.last_collector_error = str(worker_exc)
+
+                # Stoppable sleep
+                if self._stop_event.wait(timeout=1.0):
+                    break
 
         self._capture_thread = threading.Thread(target=_worker, daemon=True)
         self._capture_thread.start()
 
     def stop_capture(self) -> Dict[str, Any]:
-        """Stops live capture."""
-        if not self.is_running:
-            return {"status": "not_running"}
+        """
+        Stops live capture or simulation, halting active threads and clearing references.
+        """
+        if not self.is_running and self.mode == "stopped":
+            return {"status": "not_running", "mode": "stopped"}
 
         self.is_running = False
+        prev_mode = self.mode
+        self.mode = "stopped"
         self._stop_event.set()
 
         if self._sniffer:
@@ -252,10 +392,19 @@ class LiveCollector:
                 pass
             self._sniffer = None
 
+        if self._capture_thread and self._capture_thread.is_alive():
+            try:
+                self._capture_thread.join(timeout=1.5)
+            except Exception:
+                pass
+            self._capture_thread = None
+
         duration = round(time.time() - (self.start_time or time.time()), 2)
         return {
             "status": "stopped",
+            "previous_mode": prev_mode,
             "packets_captured": self.packets_captured,
+            "events_ingested": self.events_ingested,
             "bytes_captured": self.bytes_captured,
             "duration_s": duration
         }
@@ -281,17 +430,23 @@ class LiveCollector:
 
         extracted = []
         threats_found = 0
+        ingested_count = 0
 
         def _pcap_callback(pkt):
-            nonlocal threats_found
+            nonlocal threats_found, ingested_count
             try:
                 meta = self.extract_packet_metadata(pkt)
                 if meta:
                     extracted.append(meta)
                     if auto_ingest:
                         res = self._default_ingest(meta)
-                        if res and res.get("alert"):
-                            threats_found += 1
+                        if isinstance(res, dict) and ("error" in res or res.get("ai_error")):
+                            self.processing_errors_count += 1
+                            self.last_processing_error = str(res.get("error") or res.get("ai_error"))
+                        else:
+                            ingested_count += 1
+                            if res and res.get("alert"):
+                                threats_found += 1
             except Exception as pcap_err:
                 self.processing_errors_count += 1
                 self.last_processing_error = str(pcap_err)
@@ -309,6 +464,7 @@ class LiveCollector:
                 "file": os.path.basename(pcap_path),
                 "error": f"Failed to parse PCAP file: {str(exc)}",
                 "total_packets": len(extracted),
+                "events_ingested": ingested_count,
                 "threats_detected": threats_found
             }
 
@@ -316,6 +472,7 @@ class LiveCollector:
             "status": "completed",
             "file": os.path.basename(pcap_path),
             "total_packets": len(extracted),
+            "events_ingested": ingested_count,
             "threats_detected": threats_found,
             "sample_metadata": extracted[:5]
         }
@@ -324,17 +481,21 @@ class LiveCollector:
     # Status and Interface Directory
     # ------------------------------------------------------------------
     def get_status(self) -> Dict[str, Any]:
+        """Returns comprehensive status distinguishing mode, counts, and errors."""
         uptime = round(time.time() - self.start_time, 2) if (self.is_running and self.start_time) else 0.0
         pps = round(self.packets_captured / max(uptime, 0.001), 1) if self.is_running else 0.0
 
         return {
             "is_running":              self.is_running,
             "is_capturing":            self.is_running,
+            "mode":                    self.mode,  # "stopped", "live", "simulation"
+            "is_live":                 self.mode == "live",
+            "is_simulated":            self.mode == "simulation",
             "active_interface":        self.active_interface,
             "bpf_filter":              self.bpf_filter,
             "packets_captured":        self.packets_captured,
             "bytes_captured":          self.bytes_captured,
-            "events_ingested":         self.packets_captured,
+            "events_ingested":         self.events_ingested,
             "corrupted_packets":       self.corrupted_packets_count,
             "collector_errors":        self.collector_errors_count,
             "processing_errors":       self.processing_errors_count,

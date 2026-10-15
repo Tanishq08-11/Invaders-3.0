@@ -40,13 +40,25 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    # CORS for Security Dashboard frontend
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # CORS for Security Dashboard frontend (configurable via CORS_ORIGINS)
+    cors_origins = app.config.get("CORS_ORIGINS", "*")
+    if isinstance(cors_origins, str) and "," in cors_origins:
+        cors_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
+    CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 
     # Database
     db.init_app(app)
 
-    # Register the Person 4 API surface + Model/Dataset management + Collector
+    # ------------------------------------------------------------------
+    # Canonical Person 4 Route Registration
+    # Note: Legacy prototype blueprints (routes_detection.py, routes_hosts.py,
+    # and routes_stats.py) are intentionally omitted from registration because
+    # they depend on deprecated prototypes (models_db.py) and are superseded
+    # by canonical Person 4 blueprints:
+    #   • bp_events (replaces bp_detection)
+    #   • bp_devices (replaces bp_hosts)
+    #   • bp_metrics (replaces bp_stats)
+    # ------------------------------------------------------------------
     app.register_blueprint(bp_events)     # POST /api/v1/events
     app.register_blueprint(bp_alerts)     # GET/PATCH /api/v1/alerts
     app.register_blueprint(bp_devices)    # GET /api/v1/devices/{id}/timeline

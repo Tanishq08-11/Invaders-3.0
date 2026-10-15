@@ -20,6 +20,7 @@ Powered by **Live Network Metadata Sniffing**, **Kitsune's AfterImage Feature Ex
        +-------------------------------------------------------------+
        |         LIVE NETWORK COLLECTOR (ZERO DECRYPTION)            |
        |  • 5-tuple header extraction: src/dst IP, ports, proto, bytes|
+       |  • Operating modes: "live", "simulation", "stopped"          |
        |  • Fault-isolated packet sniffer with corrupted frame skip  |
        +------------------------------+------------------------------+
                                       |
@@ -28,6 +29,7 @@ Powered by **Live Network Metadata Sniffing**, **Kitsune's AfterImage Feature Ex
        |                     EVENT PROCESSOR                         |
        |  • Invariant: PERSIST RAW EVENT FIRST                       |
        |  • Preserves events with ai_error if model degraded         |
+       |  • Atomic database commit with automatic rollback on error  |
        +------------------------------+------------------------------+
                                       |
                                       v
@@ -43,6 +45,7 @@ Powered by **Live Network Metadata Sniffing**, **Kitsune's AfterImage Feature Ex
        |  • KitNET Ensemble Autoencoders (hierarchical clustering)   |
        |  • Teammate Model Adapter (PyTorch, Scikit-learn, Custom)    |
        |  • Automated Verification & Dynamic Hot-Swapping            |
+       |  • Model delivery decoupled: backend ready for teammate model|
        +------------------------------+------------------------------+
                                       |
                                       v
@@ -87,8 +90,11 @@ Powered by **Live Network Metadata Sniffing**, **Kitsune's AfterImage Feature Ex
 The integrated network collector automatically captures live traffic or replays PCAP traces and streams 5-tuple metadata into the ingestion pipeline:
 
 ### Capabilities
-- **Live Interface Sniffing**: Uses Scapy `AsyncSniffer` to capture raw packets across physical and virtual network adapters.
-- **Zero Decryption Guarantee**: Extracts strictly 5-tuple metadata:
+- **Explicit Operating Modes**:
+  - `live`: Scapy `AsyncSniffer` actively capturing raw packets on host network adapters.
+  - `simulation`: Background simulated traffic worker emitting synthetic flows for development/hackathon environments where raw socket privileges are restricted.
+  - `stopped`: Collector is halted.
+- **Zero Decryption Guarantee**: Extracts strictly 5-tuple metadata without ever decrypting or inspecting packet payloads:
   ```json
   {
     "timestamp": 1770984000.12,
@@ -100,8 +106,8 @@ The integrated network collector automatically captures live traffic or replays 
     "bytes": 1460
   }
   ```
-- **Offline PCAP / PCAPNG Ingestion**: Parses `.pcap`, `.pcapng`, or `.cap` capture files directly into the pipeline without decrypting payloads.
-- **Environment Fallback**: Automatically activates a simulated background worker if Npcap/WinPcap or root raw-socket permissions are unavailable in restricted sandboxes or headless CI environments.
+- **Offline PCAP / PCAPNG Ingestion**: Parses `.pcap`, `.pcapng`, or `.cap` capture files directly into the pipeline with strict input validation on `max_packets` and file integrity.
+- **Environment Fallback**: If Scapy startup fails (e.g. Npcap missing or raw-socket privilege denied), the collector records the failure, clears stale sniffer references, and safely switches to simulation mode without falsely reporting live capture.
 
 ### Command-Line Usage
 ```bash
@@ -123,6 +129,10 @@ python live_collector.py --simulate --duration 30
 ## 4. Model Management & Teammate Model Integration
 
 The backend includes a pluggable model adapter layer ([services/model_adapter.py](file:///d:/invaders%203.0/services/model_adapter.py)) that validates, benchmarks, and hot-swaps any ML detector:
+
+### Division of Responsibilities
+- **Person 4 (Backend)**: Provides the event pipeline, feature extraction, risk scoring heuristics, XAI narratives, REST APIs, SSE feeds, database persistence, and model verification seams.
+- **Teammate (ML)**: Responsible for training the custom AI model. The backend is completely decoupled and will integrate the teammate's final checkpoint without architectural modifications.
 
 ### Supported Model Formats
 1. **KitNET Ensemble Autoencoders** (`.pkl`, `.pt`)
@@ -147,12 +157,14 @@ The system implements defensive error handling across all layers:
 
 | Layer | Error Mode | Resilience & Recovery Mechanism |
 | :--- | :--- | :--- |
-| **Collector** | Malformed / corrupted packet headers | Truncated or malformed headers are safely discarded without throwing; `corrupted_packets` counter is incremented in telemetry. |
-| **Collector** | BPF filter syntax error / permission denied | Scapy exceptions are intercepted; collector logs error details in `last_collector_error` and safely falls back to simulation mode. |
-| **Pipeline** | Callback / Ingestion crash | Unhandled exceptions inside packet callbacks are caught; `processing_errors` is incremented; collector thread remains running. |
-| **Event Processor**| AI model missing or inference failure | **Persist-First Guarantee**: Raw event is committed to the database *first*. When AI fails, `ai_processed=False`, `anomaly_score=null`, and `ai_error` is saved. Event is **never dropped** or given a false zero score. |
+| **Collector** | Malformed / corrupted packet headers | Truncated or non-IP headers are safely skipped without throwing; tracked in `corrupted_packets` counter. |
+| **Collector** | Scapy startup failure / permission denied | Scapy exceptions are recorded; stale references are cleared; collector safely switches to simulation mode explicitly. |
+| **Collector** | Callback / Ingestion crash | Unhandled exceptions inside packet callbacks are caught; `processing_errors` is incremented; collector thread remains running. |
+| **Collector** | Ingestion failures returned as error dicts | Correctly detected and incremented in `processing_errors`; **never** counted as successful `events_ingested`. |
+| **PCAP Upload**| Invalid `max_packets` or empty files | Strictly validated before processing; non-integers, `<= 0`, and limits exceeding `MAX_PCAP_PACKETS` return HTTP 400. |
+| **Event Processor**| AI model missing or inference failure | **Persist-First Guarantee**: Raw event is committed to the database *first*. When AI fails, `ai_processed=False`, `anomaly_score=null`, and `ai_error` is saved. Event is **never dropped** or given a false zero score. Returns HTTP 202 Accepted. |
 | **Database** | Transaction conflicts / commit errors | Atomic operations with explicit `db.session.rollback()` handlers prevent pending transaction lockouts. |
-| **Test Runner** | Missing `pytest` binary in system `PATH` | Shims (`pytest.bat`, `pytest.cmd`, `run_tests.py`) ensure test suite execution succeeds on any Windows/Linux/CI environment. |
+| **Streaming**| SSE client disconnect / network drop | Generator wrapped in `finally: proc.unsubscribe(q)` to prevent memory leaks and orphaned queues. |
 
 ---
 
@@ -173,7 +185,8 @@ d:\invaders 3.0\
 │
 ├── core/
 │   ├── database.py             # SQLAlchemy instance
-│   └── models.py               # Models: Event, Alert, Device, ModelVersion, AnalystAction
+│   ├── models.py               # Canonical Models: Event, Alert, Device, ModelVersion, AnalystAction
+│   └── models_db.py            # (Legacy prototype models — superseded by models.py)
 │
 ├── extractor/
 │   ├── inc_stat.py             # 1D & 2D Damped Incremental Statistics
@@ -201,8 +214,11 @@ d:\invaders 3.0\
 │   ├── routes_model.py         # GET/POST /api/v1/model (status, train, thresholds, verify, features)
 │   ├── routes_dataset.py       # GET/POST /api/v1/dataset (universal dataset info, upload, schema)
 │   ├── routes_metrics.py       # GET /api/v1/metrics (model calibration, system counters, SOC stats)
-│   ├── routes_health.py        # GET /api/v1/health (service, db, and model availability)
-│   └── routes_stream.py        # GET /api/v1/stream/live (SSE feed) & simulation controls
+│   ├── routes_health.py        # GET /api/v1/health (service, db ping, and collector mode)
+│   ├── routes_stream.py        # GET /api/v1/stream/live (SSE feed) & simulation controls
+│   ├── routes_detection.py     # (Legacy prototype route — superseded by routes_events.py)
+│   ├── routes_hosts.py         # (Legacy prototype route — superseded by routes_devices.py)
+│   └── routes_stats.py         # (Legacy prototype route — superseded by routes_metrics.py)
 │
 ├── data/
 │   ├── dataset_generator.py    # Generates realistic BoT-IoT normal & attack splits
@@ -213,6 +229,8 @@ d:\invaders 3.0\
     ├── test_integration.py     # Person 4 Definition of Done end-to-end integration test suite
     ├── test_collector.py       # Live network collector & metadata extraction tests
     ├── test_errors_and_resilience.py # Error handling, malformed packets, and recovery tests
+    ├── test_pcap_validation.py # PCAP input validation, boundary enforcement tests
+    ├── test_routes_and_health.py # Canonical route registration, health ping, and metrics tests
     ├── test_model_adapter.py   # Model verification, custom teammate models, hot-swapping tests
     ├── test_api.py             # Route contract tests (health, devices, alerts, simulation)
     ├── test_extractor.py       # Unit tests for AfterImage & incremental stats
@@ -224,54 +242,47 @@ d:\invaders 3.0\
 
 ## 7. REST & SSE API Reference
 
-### 1. Live Network Collector
-- `GET /api/v1/collector/status` — Returns sniffer state, packet/byte counts, throughput (pkts/sec), corrupted packets, and error telemetry.
-- `GET /api/v1/collector/interfaces` — Lists available network adapters on the host.
-- `POST /api/v1/collector/start` — Starts live packet capture (`{"interface": "Wi-Fi", "filter": "ip", "simulate": false}`).
-- `POST /api/v1/collector/stop` — Halts packet capture and returns session telemetry.
-- `POST /api/v1/collector/pcap` — Multipart upload of raw `.pcap`/`.pcapng` files for automated metadata streaming.
+### Canonical Blueprints Registered in `app.py`:
 
-### 2. Ingestion
-- `POST /api/v1/events` — Ingest single network flow event.
-  - **Design Invariant**: Persist first. Raw event is saved to the database *before* AI scoring.
-  - If model fails, saves event with `ai_error` message and returns HTTP 202 Accepted.
-  - Supports batch ingestion via `{"events": [...]}`.
+| Blueprint | Base Path | Key Endpoints | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`bp_collector`** | `/api/v1/collector` | `GET /status`, `GET /interfaces`, `POST /start`, `POST /stop`, `POST /pcap` | Live network packet capture, interface discovery, PCAP upload |
+| **`bp_events`** | `/api/v1/events` | `POST /` (single & batch) | Persist-first network event ingestion |
+| **`bp_alerts`** | `/api/v1/alerts` | `GET /`, `GET /<id>`, `PATCH /<id>` | Alert triage, disposition update, SOC evidence |
+| **`bp_devices`** | `/api/v1/devices` | `GET /`, `GET /<id>/timeline`, `POST /<id>/flag` | Workstation profiles, timeline, quarantine toggle |
+| **`bp_model`** | `/api/v1/model` | `GET /status`, `POST /verify`, `POST /train`, `POST /thresholds`, `GET /features` | Model inspection, teammate model verification, hot-swapping |
+| **`bp_dataset`** | `/api/v1/dataset` | `GET /info`, `POST /upload`, `POST /convert` | Universal dataset ingestion (CIC-IDS, UNSW-NB15, Zeek) |
+| **`bp_metrics`** | `/api/v1/metrics` | `GET /` | Operational metrics, collector telemetry, precision estimates |
+| **`bp_health`** | `/api/v1/health` | `GET /` | Live database ping query, collector mode, model availability |
+| **`bp_stream`** | `/api/v1/stream` | `GET /live`, `POST /start`, `/pause`, `/resume`, `/stop` | Server-Sent Events (SSE) feed and simulation replay |
 
-### 3. Model Management & Teammate Verification
-- `GET /api/v1/model/status` — Inspects active KitNET detector, baseline statistics ($\mu, \sigma, \max$), and cluster layouts.
-- `POST /api/v1/model/verify` — Validates candidate models against 100-D input specification, benchmarks inference latency, and supports dynamic hot-swapping (`{"deploy": true}`).
-- `POST /api/v1/model/train` — Retrains KitNET baseline on clean traffic dataset.
-- `POST /api/v1/model/thresholds` — Dynamically updates Z-score severity thresholds (`z_low`, `z_med`, `z_high`, `z_crit`).
-- `GET /api/v1/model/features` — Lists the 100 AfterImage features with descriptions and cluster assignments.
-
-### 4. Alert Triage Lifecycle
-- `GET /api/v1/alerts` — Query parameters: `severity`, `status`, `device_id`, `limit`, `offset`.
-- `GET /api/v1/alerts/<id_or_uuid>` — Retrieves full alert with top-5 feature error attributions, SOC narrative, and mitigation playbook.
-- `PATCH /api/v1/alerts/<id_or_uuid>` — Updates alert disposition (`threat_confirmed`, `benign_activity`, `policy_violation`, `false_positive`), status, and analyst notes.
-
-### 5. Device Timeline & Quarantine
-- `GET /api/v1/devices` — Lists all tracked internal workstations ranked by risk score and alert count.
-- `GET /api/v1/devices/<id>/timeline` — Returns endpoint event history and linked security incidents.
-- `POST /api/v1/devices/<id>/flag` — Toggles workstation quarantine status.
-
-### 6. System Metrics & Health
-- `GET /api/v1/metrics` — Ingestion counts, model calibration parameters, precision estimates, and severity distribution.
-- `GET /api/v1/health` — Readiness status (`healthy` or `degraded`), database connection, and model loading state.
-
-### 7. Real-Time Streaming (SSE)
-- `GET /api/v1/stream/live` — Server-Sent Events stream delivering live telemetry and alerts to dashboard clients.
-- `POST /api/v1/stream/start`, `/pause`, `/resume`, `/stop` — Controls simulated traffic replay.
+> **Note on Unregistered Routes**: `routes_detection.py`, `routes_hosts.py`, and `routes_stats.py` were early prototypes that queried `core/models_db.py`. They are intentionally omitted from registration to prevent route duplication and avoid querying unpopulated tables.
 
 ---
 
-## 8. Verification & Test Suite Execution
+## 8. Configuration Variables
+
+Settings in [config.py](file:///d:/invaders%203.0/config.py) configurable via environment variables:
+
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `FLASK_DEBUG` | `False` | Enables Flask debug mode (defaults to `False` for production security). |
+| `SECRET_KEY` | `insider-threat-ai-secret-key-2026` | Flask cryptographic session key. |
+| `DATABASE_URL` | `sqlite:///instance/insider_threat.db` | PostgreSQL connection string or local SQLite fallback. |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated list for restricted environments). |
+| `MAX_CONTENT_LENGTH` | `104857600` (100 MB) | Maximum allowable payload size for file uploads. |
+| `MAX_PCAP_PACKETS` | `50000` | Upper limit on packet processing for PCAP uploads. |
+
+---
+
+## 9. Verification & Test Suite Execution
 
 ### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Execute Automated Test Suite (42/42 Tests)
+### 2. Execute Automated Test Suite (57/57 Tests)
 Run any of the following commands in the project directory:
 
 ```bash
@@ -285,10 +296,12 @@ python -m pytest
 pytest
 ```
 
-**Test Suite Coverage (42 Total Tests):**
+**Complete Test Suite Breakdown (57 Total Tests Across 10 Test Modules):**
 - `tests/test_api.py` (4 tests): Health, device listing & quarantine, stream simulation, alert filtering.
 - `tests/test_collector.py` (4 tests): Collector status, interface enumeration, start/stop, 5-tuple extraction.
-- `tests/test_errors_and_resilience.py` (6 tests): Corrupted packet handling, callback error isolation, PCAP error recovery, idempotent lifecycle, persist-first guarantee, live capture execution.
+- `tests/test_errors_and_resilience.py` (9 tests): Corrupted packet handling, callback error isolation, PCAP error recovery, idempotent lifecycle, persist-first guarantee, live capture execution, startup failure stale sniffer cleanup, fallback mode verification, non-double-counting error metrics.
+- `tests/test_pcap_validation.py` (7 tests): Missing PCAP file rejection, invalid extensions, empty files, non-integer max_packets, zero/negative limits, excessive packet limits.
+- `tests/test_routes_and_health.py` (5 tests): Canonical route registration verification, legacy route exclusion (404), live database ping check, collector mode reporting, metrics consistency.
 - `tests/test_extractor.py` (3 tests): 1D & 2D incremental damped statistics, 100-D AfterImage feature vector generation.
 - `tests/test_integration.py` (15 tests): End-to-end Definition of Done integration tests, alert updates, device timelines, metrics.
 - `tests/test_kitnet.py` (3 tests): Autoencoder forward pass & training, hierarchical correlation clustering, checkpoint persistence.
@@ -306,3 +319,11 @@ python app.py
 ```
 - Listens on `http://0.0.0.0:5000`.
 - Automatically connects to PostgreSQL via `DATABASE_URL` (falls back to SQLite for local development).
+
+---
+
+## 10. Known Limitations
+
+1. **AI Model Integration**: The trained AI model is developed by a teammate; the backend is currently configured with the baseline model adapter and verification seam awaiting the teammate's final model checkpoint.
+2. **Raw Packet Capture Permissions**: Raw packet capture via Scapy requires OS-level packet capture drivers (WinPcap/Npcap on Windows, `CAP_NET_RAW` / root on Linux). In sandboxed or unprivileged CI environments, the collector gracefully runs in simulation mode.
+3. **Hackathon Prototype Authentication**: User authentication and API token validation are intentionally omitted in this hackathon prototype to allow seamless dashboard demonstration and integration testing.

@@ -12,8 +12,9 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 class Config:
     # Flask
     SECRET_KEY = os.environ.get("SECRET_KEY", "insider-threat-ai-secret-key-2026")
-    DEBUG = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "yes")
+    DEBUG = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
     JSON_SORT_KEYS = False
+    CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
 
     # Database — PostgreSQL preferred, SQLite fallback
     INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
@@ -24,12 +25,13 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # File storage
+    # File storage & Upload Limits
     DATA_DIR = os.path.join(BASE_DIR, "data")
     CHECKPOINTS_DIR = os.path.join(INSTANCE_DIR, "checkpoints")
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
-    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100 MB
+    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100 MB max upload
+    MAX_PCAP_PACKETS = int(os.environ.get("MAX_PCAP_PACKETS", 50000))
 
     # Kitsune AfterImage lambdas (temporal decay windows)
     AFTERIMAGE_LAMBDAS = [5.0, 3.0, 1.0, 0.1, 0.01]

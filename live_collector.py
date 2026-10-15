@@ -66,10 +66,14 @@ def main():
     print("=" * 60)
 
     res = collector.start_live_capture(interface=args.interface, bpf_filter=args.filter, simulate=args.simulate)
-    mode_str = "simulated" if args.simulate else ("live-sniffer" if res.get("scapy_live") else "fallback")
     print(f"[Collector] Status:    {res.get('status')}")
-    print(f"[Collector] Mode:      {mode_str}")
+    print(f"[Collector] Mode:      {res.get('mode')}")
     print(f"[Collector] Interface: {res.get('interface')}")
+    if res.get("warning"):
+        print(f"[Collector] Warning:   {res.get('warning')}")
+    if res.get("error"):
+        print(f"[Collector] Error:     {res.get('error')}", file=sys.stderr)
+        return
     print("\nPress Ctrl+C to stop packet capture...\n")
 
     start_time = time.time()
