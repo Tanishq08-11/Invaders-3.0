@@ -7,6 +7,7 @@ Evaluates KitNET statistical anomaly scores alongside contextual network heurist
 - Host historical risk accumulation
 """
 from typing import Dict, Any, Tuple
+import math
 from datetime import datetime, timezone
 import ipaddress
 import numpy as np
@@ -233,3 +234,125 @@ def combine_rule_signals(results):
 
 
 RiskEngine.combine_rule_signals = staticmethod(combine_rule_signals)
+
+
+# ---------------------------------------------------------------------------------------
+# Hybrid risk: TrustLab KitNET anomaly result + D1–D28 rule results → one decision
+# ---------------------------------------------------------------------------------------
+RISK_LEVELS = ((85.0, "CRITICAL"), (65.0, "HIGH"), (45.0, "MEDIUM"), (20.0, "LOW"))
+HYBRID_POLICY = ("ai_risk = 50·(score/threshold) below the threshold, 60 + 25·log2(score/threshold) at or above it "
+                 "(capped at 100); final = noisy-OR(ai_risk, rule_score) over the components that exist; "
+                 "alert when KitNET is anomalous (score > threshold) or the rule layer's alert condition holds")
+
+
+def risk_level(score: float) -> str:
+    for floor, level in RISK_LEVELS:
+        if score >= floor:
+            return level
+    return "NORMAL"
+
+
+def ai_risk_from_score(anomaly_score: float, threshold: float) -> float:
+    """Map a KitNET RMSE onto 0-100, anchored on the bundle threshold (ratio 1 → 60, 2 → 85, 4 → 100)."""
+    if threshold <= 0:
+        return 0.0
+    ratio = anomaly_score / threshold
+    if ratio < 1.0:
+        return round(50.0 * max(0.0, ratio), 1)
+    return round(min(100.0, 60.0 + 25.0 * math.log2(ratio)), 1)
+
+
+def hybrid_risk(model: Dict[str, Any], rules: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    model: {"status", "anomaly_score", "threshold", "is_anomalous", "top_features", "feature_coverage", "reason"}
+           status ∈ scored | unavailable | unsupported | failed | disabled | not_applicable
+    rules: {"status": evaluated | skipped | failed | disabled, "summary", "triggered": [entries],
+            "rule_score", "rule_severity", "alert_due", "reason"}
+    Missing components stay null — nothing is substituted for a model score or a rule result.
+    """
+    scored = model.get("status") == "scored" and model.get("anomaly_score") is not None
+    anomalous = bool(scored and model.get("is_anomalous"))
+    ai_risk = ai_risk_from_score(model["anomaly_score"], model["threshold"]) if scored else None
+
+    triggered = list(rules.get("triggered") or [])
+    security = [t for t in triggered if t.get("category", "security") == "security"]
+    rule_score = rules.get("rule_score") if security else None
+    rule_due = bool(rules.get("alert_due"))
+    summary = rules.get("summary") or {}
+    results = summary.get("results") or {}
+
+    components = [c for c in (ai_risk, rule_score) if c is not None]
+    remaining = 1.0
+    for c in components:
+        remaining *= 1.0 - min(100.0, c) / 100.0
+    final = round(100.0 * (1.0 - remaining), 1) if components else None
+
+    alert = anomalous or rule_due
+    if not alert:
+        source = "none"
+    elif anomalous and security:
+        source = "hybrid"
+    elif anomalous:
+        source = "ai"
+    else:
+        source = "rules"
+    level = risk_level(final) if final is not None else "NORMAL"
+    if alert and level == "NORMAL":
+        level = "LOW"
+
+    parts = []
+    if scored:
+        ratio = model["anomaly_score"] / model["threshold"] if model["threshold"] else 0.0
+        verdict = "ANOMALOUS" if anomalous else "within the normal range"
+        parts.append(f"KitNET (TrustLab 78-feature bundle) score {model['anomaly_score']:.6f} vs threshold "
+                     f"{model['threshold']:.6f} ({ratio:.2f}×) — {verdict}.")
+        top = [f["feature_name"] for f in (model.get("top_features") or [])[:3]]
+        if anomalous and top:
+            parts.append("Largest reconstruction errors: " + ", ".join(top) + ".")
+        cov = model.get("feature_coverage") or {}
+        if cov.get("imputed"):
+            parts.append(f"{cov['imputed']} of {cov.get('total', 78)} model features were not measured and used the "
+                         "bundle's training medians.")
+    else:
+        parts.append(f"KitNET not evaluated ({model.get('status')}): {model.get('reason') or 'no model result'}.")
+    if rules.get("status") == "evaluated":
+        if security:
+            parts.append("Rule detectors triggered: " + "; ".join(
+                f"[{t['detector_id']} {t.get('name', '')}, {t.get('severity')}] {t.get('reason', '')}".strip()
+                for t in security))
+        else:
+            parts.append("No rule detector triggered.")
+        ne = summary.get("not_evaluated") or []
+        if ne:
+            parts.append(f"{len(ne)} detectors lacked the data/history to evaluate ({', '.join(ne)}).")
+    else:
+        parts.append(f"Rule layer {rules.get('status')}: {rules.get('reason') or 'not run'}.")
+    if alert:
+        parts.append({"hybrid": "Alert: AI anomaly corroborated by rule evidence.",
+                      "ai": "Alert: AI-only anomaly (no rule corroboration).",
+                      "rules": "Alert: rule evidence; the AI model did not flag this flow."}[source])
+
+    return {
+        "anomaly_score": round(float(model["anomaly_score"]), 8) if scored else None,
+        "anomaly_threshold": model.get("threshold"),
+        "model_status": model.get("status"),
+        "model_reason": model.get("reason"),
+        "is_anomalous": anomalous if scored else None,
+        "ai_risk_score": ai_risk,
+        "feature_coverage": model.get("feature_coverage"),
+        "top_features": model.get("top_features") or [],
+        "rule_status": rules.get("status"),
+        "triggered_detectors": triggered,
+        "rule_score": rule_score,
+        "rule_severity": rules.get("rule_severity") if security else None,
+        "rule_alert_due": rule_due,
+        "detector_errors": [{"detector_id": k, "reason": results.get(k, {}).get("reason")} for k in summary.get("errors") or []],
+        "insufficient_data": [{"detector_id": k, "reason": results.get(k, {}).get("reason")}
+                              for k in summary.get("not_evaluated") or []],
+        "final_risk_score": final,
+        "final_risk_level": level,
+        "detection_source": source,
+        "alert": alert,
+        "explanation": " ".join(parts),
+        "policy": HYBRID_POLICY,
+    }

@@ -50,6 +50,7 @@ _EVENT_COLUMNS = {
     "details_json":      "TEXT",
     "entity_key":        "VARCHAR(96)",
     "detection_summary_json": "TEXT",
+    "hybrid_risk_json":  "TEXT",
 }
 
 _ALERT_COLUMNS = {
@@ -61,6 +62,7 @@ _ALERT_COLUMNS = {
     "event_type":        "VARCHAR(32)",
     "entity_key":        "VARCHAR(96)",
     "user_id":           "INTEGER",
+    "hybrid_risk_json":  "TEXT",
 }
 
 # Legacy rows: derive detection_status from the AI outcome the row already recorded.

@@ -175,7 +175,11 @@ def extract_packet_metadata(pkt) -> Optional[Dict[str, Any]]:
 
         src_port = dst_port = None
         tcp_flags = None
+        tcp_window = None
         payload_len = 0
+        # Network + transport header length (IPv4 IHL / fixed IPv6 header + L4 header);
+        # the flow feature builder sums it per direction (CICFlowMeter "Header Len").
+        header_bytes = (int(ip.ihl) * 4 if ip_version == 4 and ip.ihl is not None else 40)
         tls = None
         hint = None
         if pkt.haslayer(TCP):
@@ -183,6 +187,8 @@ def extract_packet_metadata(pkt) -> Optional[Dict[str, Any]]:
             proto = "TCP"
             src_port, dst_port = int(seg.sport), int(seg.dport)
             tcp_flags = tcp_flag_string(seg.flags)
+            tcp_window = int(seg.window) if seg.window is not None else None
+            header_bytes += int(seg.dataofs) * 4 if seg.dataofs is not None else 20
             payload = bytes(seg.payload)[:_TLS_PEEK_BYTES] if seg.payload is not None else b""
             payload_len = len(seg.payload) if seg.payload is not None else 0
             if looks_like_tls_handshake(payload):
@@ -195,6 +201,7 @@ def extract_packet_metadata(pkt) -> Optional[Dict[str, Any]]:
             proto = "UDP"
             src_port, dst_port = int(dgram.sport), int(dgram.dport)
             payload_len = len(dgram.payload) if dgram.payload is not None else 0
+            header_bytes += 8
         elif ICMP is not None and pkt.haslayer(ICMP):
             proto = "ICMP"
         else:
@@ -214,7 +221,10 @@ def extract_packet_metadata(pkt) -> Optional[Dict[str, Any]]:
             "duration":      0.0,
             "tcp_flags":     tcp_flags,
             "direction":     classify_direction(src_ip, dst_ip),
+            "header_bytes":  header_bytes,
         }
+        if tcp_window is not None:
+            meta["tcp_window"] = tcp_window
         if Ether is not None and pkt.haslayer(Ether):
             meta["src_mac"] = str(pkt[Ether].src).lower()
             meta["dst_mac"] = str(pkt[Ether].dst).lower()

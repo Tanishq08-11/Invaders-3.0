@@ -193,7 +193,7 @@ def test_detector_disabled_is_reported_everywhere(app, proc, monkeypatch):
     analyst = login(app, "analyst01")
     h = analyst.get("/api/v1/health").get_json()
     assert h["status"] == "degraded" and h["model_loaded"] is False
-    assert h["detector"]["state"] == "disabled" and h["detector"]["final_model"] is False
+    assert h["detector"]["state"] == "disabled" and h["detector"]["model"] == "kitnet_trustlab_bundle"
 
 
 def test_flows_are_stored_but_not_scored(app, proc, monkeypatch):
@@ -213,12 +213,12 @@ def test_mocked_detector_interface_alert_carries_source(app, proc, monkeypatch):
         def score(self, vec):
             return 50.0, np.ones(len(vec), dtype=np.float32)
 
+    record = {"src_ip": "192.168.1.105", "dst_ip": "198.51.100.77", "dst_port": 443, "bytes": 1460,
+              **{n: proc.medians[n] for n in proc.feature_names[3:40]}}   # CICFlowMeter-named columns
     monkeypatch.setattr(proc, "kitnet", StubDetector())
     monkeypatch.setattr(proc, "model_loaded", True)
-    monkeypatch.setattr(proc, "detector_backend", "kitnet_baseline")
     with app.app_context():
-        r = proc.submit({"src_ip": "192.168.1.105", "dst_ip": "198.51.100.77", "dst_port": 443, "bytes": 1460},
-                        event_type="network_packet", source="pcap")
+        r = proc.submit(record, event_type="network_record", source="pcap")
         assert r["detection_status"] == "scored" and r["alert"] is not None
         alert = db.session.get(Alert, r["alert"]["id"])
         assert alert.source == "pcap" and alert.to_dict()["data_source"] == "pcap"
@@ -541,7 +541,8 @@ def test_health_hides_details_from_anonymous_and_is_honest(app):
     anon = app.test_client().get("/api/v1/health").get_json()
     assert "collector" not in anon and "counters" not in anon and anon["database"] == "connected"
     h = login(app, "analyst01").get("/api/v1/health").get_json()
-    assert h["detector"]["final_model"] is False
+    assert h["detector"]["final_model"] is True and h["detector"]["input_dimension"] == 78
+    assert h["detector"]["anomaly_threshold"] == 0.07018400015809657
     assert h["collector"]["mode"] == "stopped" and h["collector"]["is_live"] is False
     assert h["tls"]["ja4"] == "unsupported" and h["tls"]["zeek"]["available"] in (True, False)
     assert h["sse"]["max_subscribers"] == app.config["SSE_MAX_SUBSCRIBERS"]

@@ -135,7 +135,13 @@ class DetectionEngine:
             identity.mark_seen(res["device"], f.end_ts or f.ts)
 
     # ------------------------------------------------------------------ run
-    def run(self, ev: Event, on_alert=None) -> Optional[Dict[str, Any]]:
+    def run(self, ev: Event, on_alert=None, create_alert: bool = True, flagged_hint: bool = False) -> Optional[Dict[str, Any]]:
+        """
+        create_alert=False: evaluate, persist signals and the summary, but leave the alert decision
+        to the caller (EventProcessor's hybrid AI + rules correlation — one alert per event).
+        flagged_hint: the caller already knows the event is suspicious (e.g. KitNET anomaly), so
+        detectors must not learn it as normal behaviour.
+        """
         if not cfg("DETECTION_ENABLED"):
             return None
         if ev.event_type == EVENT_NETWORK_PACKET:
@@ -143,9 +149,9 @@ class DetectionEngine:
         if ev.detection_summary_json:
             return {"skipped": "already evaluated"}
         with self._run_lock:
-            return self._run(ev, on_alert)
+            return self._run(ev, on_alert, create_alert, flagged_hint)
 
-    def _run(self, ev: Event, on_alert) -> Dict[str, Any]:
+    def _run(self, ev: Event, on_alert, create_alert: bool = True, flagged_hint: bool = False) -> Dict[str, Any]:
         f = EventFeatures.from_event(ev)
         ctx = DetectionContext(ev, f, now=time.time())
         self._resolve_entity(ev, f, ctx)
@@ -167,7 +173,7 @@ class DetectionEngine:
         ]) if security else None
         high = any(SEVERITY_ORDER.get(r.severity, 0) >= 3 for _, r in security)
         alert_due = bool(security) and (high or combined["rule_score"] >= float(cfg("RULE_ALERT_MIN_SCORE")))
-        flagged = alert_due or ev.alert_id is not None
+        flagged = alert_due or ev.alert_id is not None or bool(flagged_hint)
 
         for det in self._applicable(ev.event_type):
             r = ctx.results[det.id]
@@ -186,8 +192,17 @@ class DetectionEngine:
 
         signals = self._persist(ctx, ev)
         alert_dict = None
-        if alert_due:
+        if alert_due and create_alert:
             alert_dict = self._alert(ev, f, ctx, security, combined, signals, on_alert)
+        sig_rows = {s.detector_id: s for s in signals if s.status == SIGNAL_TRIGGERED}
+        by_id = {d.id: d for d in self.detectors}
+        triggered = [{
+            "detector_id": k, "name": by_id[k].name, "category": by_id[k].category, "group": by_id[k].group,
+            "severity": r.severity, "score": r.score, "reason": r.reason, "evidence": list(r.evidence),
+            "observed": r.observed, "baseline": r.baseline, "threshold": r.threshold,
+            "evidence_only": r.evidence_only,
+            "signal_id": sig_rows[k].signal_uuid if k in sig_rows else None,
+        } for k, r in sorted(ctx.results.items()) if r.status == TRIGGERED]
 
         ev.detection_summary_json = json.dumps({
             "engine_version": ENGINE_VERSION,
@@ -200,11 +215,13 @@ class DetectionEngine:
             "errors": sorted(k for k, r in ctx.results.items() if r.status == ERROR),
             "rule_score": combined["rule_score"] if combined else None,
             "rule_severity": combined["severity"] if combined else None,
-            "alert_created": bool(alert_dict),
+            "alert_due": alert_due,
+            "alert_created": bool(alert_dict) if create_alert else None,
             "flagged": flagged,
-        })
+        }, default=str)
         self.counters["events_evaluated"] += 1
-        return {"signals": [s.to_dict() for s in signals], "combined": combined, "alert": alert_dict,
+        return {"signals": [s.to_dict() for s in signals], "signal_rows": signals, "combined": combined,
+                "alert": alert_dict, "alert_due": alert_due, "triggered": triggered,
                 "summary": json.loads(ev.detection_summary_json)}
 
     # ------------------------------------------------------------------ persistence

@@ -66,6 +66,13 @@ export const alertSchema = z.object({
   status: statusSchema,
   signals: z.array(signalSchema).nullish().transform((v) => v ?? []),
   data_source: dataSourceSchema.optional(),
+  /** Hybrid decision: ai | rules | hybrid; model score vs the TrustLab threshold; rule score. */
+  detection_source: str,
+  anomaly_score: num,
+  anomaly_threshold: num,
+  model_status: str,
+  rule_score: num,
+  final_risk_level: str,
 })
 
 export const riskContributionSchema = z.object({
@@ -79,6 +86,7 @@ export const riskContributionSchema = z.object({
 
 export const alertDetailSchema = alertSchema.extend({
   explanation: str,
+  hybrid_risk: z.record(z.string(), z.unknown()).nullish(),
   risk_contributions: z.array(riskContributionSchema).nullish(),
   events: z.array(networkEventSchema).nullish(),
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).nullish(),
@@ -240,6 +248,8 @@ export const eventSchema = z.object({
   anomaly_score: num,
   ai_error: str,
   alert_id: z.union([z.string(), z.number()]).transform(String).nullish(),
+  detection_summary: z.record(z.string(), z.unknown()).nullish(),
+  hybrid_risk: z.record(z.string(), z.unknown()).nullish(),
 })
 
 export const correlationSchema = z.object({

@@ -50,7 +50,7 @@ class DetectorResult:
     def summary(self) -> Dict[str, Any]:
         out = {"status": self.status}
         if self.status == TRIGGERED:
-            out.update(severity=self.severity, score=self.score)
+            out.update(severity=self.severity, score=self.score, reason=self.reason, evidence=list(self.evidence))
         if self.status in (NOT_EVALUATED, ERROR):
             out["reason"] = self.reason
         return out

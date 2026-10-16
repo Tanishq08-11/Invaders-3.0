@@ -141,7 +141,9 @@ def get_metrics():
     model_info = {
         "active_version":  active_model.to_dict() if active_model else None,
         "kitnet_phase":    getattr(proc.kitnet, "phase", "active") if proc.kitnet else "unavailable",
-        "input_dimension": getattr(proc.kitnet, "input_dim", 100) if proc.kitnet else 0,
+        "input_dimension": getattr(proc.kitnet, "input_dim", 0) if proc.kitnet else 0,
+        "model":           "kitnet_trustlab_bundle",
+        "anomaly_threshold": proc.threshold,
         "num_clusters":    len(getattr(proc.kitnet, "clusters", [])) if proc.kitnet else 0,
         "baseline_mean":   round(getattr(proc.kitnet, "baseline_mean", 0.0), 6) if proc.kitnet else 0.0,
         "baseline_std":    round(getattr(proc.kitnet, "baseline_std", 1.0), 6) if proc.kitnet else 0.0,

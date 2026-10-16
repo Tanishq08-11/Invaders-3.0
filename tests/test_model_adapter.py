@@ -85,16 +85,16 @@ def test_teammate_model_hot_swapping(client):
     assert swap_res["verification"]["verified"] is True
 
     # Ingest event and verify it runs through the new teammate model
+    # A flow record carrying CICFlowMeter columns (the 78-feature model's input schema).
     event_data = {
-        "src_ip": "192.168.1.15",
-        "dst_ip": "10.0.0.5",
-        "src_port": 50000,
-        "dst_port": 80,
-        "protocol": "TCP",
-        "bytes": 1024,
-        "timestamp": 1600000100.0
+        "src_ip": "192.168.1.15", "dst_ip": "10.0.0.5", "src_port": 50000, "dst_port": 80,
+        "protocol": "TCP", "bytes": 1024, "timestamp": 1600000100.0,
+        **{name: proc.medians[name] for name in proc.feature_names[3:40]},
     }
-    result = proc.ingest(event_data)
+    try:
+        result = proc.ingest(event_data)
+    finally:
+        proc.reload_model()   # the singleton must go back to the authoritative bundle
     assert result is not None
     assert result["ai_processed"] is True
     assert result["anomaly_score"] is not None

@@ -1,0 +1,2336 @@
+{
+ "alert_detail": {
+  "alert_uuid": "ALT-E7563A1BD8",
+  "analyst_actions": [],
+  "analyst_note": null,
+  "analyst_notes": null,
+  "anomaly_score": 41.2467,
+  "anomaly_threshold": 0.07018400015809657,
+  "bytes_out": 11052406,
+  "bytes_transferred": 11052406,
+  "confidence": null,
+  "created_at": "2026-10-16T00:56:54.338086+00:00",
+  "data_source": "pcap",
+  "destination": "198.51.100.23",
+  "destination_port": 3389,
+  "detection_source": "hybrid",
+  "device_id": "10.20.0.16",
+  "disposition": null,
+  "dst_ip": "198.51.100.23",
+  "dst_port": 3389,
+  "entity_key": "addr:10.20.0.16",
+  "event_type": "network_flow",
+  "events": [
+   {
+    "action": null,
+    "ai_error": null,
+    "ai_processed": true,
+    "alert_id": 1,
+    "anomaly_score": 41.24672,
+    "bytes_in": 24230,
+    "bytes_out": 11052406,
+    "bytes_transferred": 11076636,
+    "data_source": "pcap",
+    "details": {
+     "app_protocol": null,
+     "bwd": {
+      "app_hint": null,
+      "bytes": 24230,
+      "header_bytes": 14680,
+      "iat_histogram": {
+       "counts": [
+        0,
+        0,
+        0,
+        0,
+        365,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        0.0001,
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+       ],
+       "entropy_bits": 0.0272,
+       "entropy_normalized": 0.0071,
+       "samples": 366
+      },
+      "init_window": 65160,
+      "inter_arrival_s": {
+       "max": 0.060002,
+       "mean": 0.041969,
+       "min": 0.012,
+       "std": 0.001829
+      },
+      "inter_arrival_total_s": 15.360716,
+      "packet_size": {
+       "max": 74,
+       "mean": 66.02,
+       "min": 66,
+       "std": 0.42
+      },
+      "packets": 367,
+      "payload_packets": 367,
+      "psh_flags": 0,
+      "size_histogram": {
+       "counts": [
+        0,
+        367,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024,
+        1280,
+        1400,
+        1500
+       ],
+       "entropy_bits": -0.0,
+       "entropy_normalized": -0.0,
+       "samples": 367
+      },
+      "urg_flags": 0
+     },
+     "bwd_bytes": 24230,
+     "bwd_packets": 367,
+     "duration_s": 15.370716,
+     "end_reason": "tcp_close",
+     "end_time": 1760421615.3707163,
+     "external_ip": "198.51.100.23",
+     "fwd": {
+      "app_hint": null,
+      "bytes": 11052406,
+      "header_bytes": 292120,
+      "iat_histogram": {
+       "counts": [
+        0,
+        0,
+        7300,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        0.0001,
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+       ],
+       "entropy_bits": 0.0039,
+       "entropy_normalized": 0.001,
+       "samples": 7302
+      },
+      "init_window": 64240,
+      "inter_arrival_s": {
+       "max": 0.02,
+       "mean": 0.002104,
+       "min": 0.002,
+       "std": 0.000492
+      },
+      "inter_arrival_total_s": 15.360716,
+      "packet_size": {
+       "max": 1514,
+       "mean": 1513.41,
+       "min": 66,
+       "std": 29.29
+      },
+      "packets": 7303,
+      "payload_packets": 7303,
+      "psh_flags": 7300,
+      "size_histogram": {
+       "counts": [
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7300
+       ],
+       "edges": [
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024,
+        1280,
+        1400,
+        1500
+       ],
+       "entropy_bits": 0.0052,
+       "entropy_normalized": 0.0016,
+       "samples": 7303
+      },
+      "urg_flags": 0
+     },
+     "fwd_bytes": 11052406,
+     "fwd_packets": 7303,
+     "inbound_bytes": 24230,
+     "inbound_packets": 367,
+     "init_mac": null,
+     "initiator_inferred": false,
+     "inter_arrival_s": {
+      "max": 0.01,
+      "mean": 0.002004,
+      "min": 0.002,
+      "std": 0.000183
+     },
+     "internal_ip": "10.20.0.16",
+     "org_direction": "outbound",
+     "outbound_bytes": 11052406,
+     "outbound_packets": 7303,
+     "packet_size": {
+      "max": 1514,
+      "mean": 1444.15,
+      "min": 66,
+      "std": 310.26
+     },
+     "resp_mac": null,
+     "start_time": 1760421600.0,
+     "tcp_flags": {
+      "ack": 7669,
+      "ece": 0,
+      "fin": 2,
+      "psh": 7300,
+      "rst": 0,
+      "syn": 2,
+      "urg": 0
+     },
+     "tcp_outcome": "established",
+     "total_bytes": 11076636,
+     "total_packets": 7670
+    },
+    "detection_status": "scored",
+    "detection_summary": {
+     "alert_created": true,
+     "alert_due": true,
+     "alert_id": "ALT-E7563A1BD8",
+     "engine_version": "1.0",
+     "entity_key": "addr:10.20.0.16",
+     "entity_kind": "addr",
+     "errors": [],
+     "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+     "flagged": true,
+     "not_evaluated": [
+      "D1",
+      "D10",
+      "D18",
+      "D19",
+      "D2",
+      "D26",
+      "D3",
+      "D4",
+      "D5",
+      "D7",
+      "D9"
+     ],
+     "results": {
+      "D1": {
+       "reason": "Insufficient baseline: 0 prior transfers (< 20).",
+       "status": "not_evaluated"
+      },
+      "D10": {
+       "reason": "Evaluated when the entity's current day closes.",
+       "status": "not_evaluated"
+      },
+      "D12": {
+       "status": "clear"
+      },
+      "D17": {
+       "status": "clear"
+      },
+      "D18": {
+       "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
+       "status": "not_evaluated"
+      },
+      "D19": {
+       "reason": "0/8 connection intervals observed for this destination.",
+       "status": "not_evaluated"
+      },
+      "D2": {
+       "reason": "Destination history warming up (0/200 flows).",
+       "status": "not_evaluated"
+      },
+      "D20": {
+       "evidence": [],
+       "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+       "score": 70.0,
+       "severity": "HIGH",
+       "status": "triggered"
+      },
+      "D21": {
+       "status": "clear"
+      },
+      "D22": {
+       "status": "clear"
+      },
+      "D23": {
+       "status": "clear"
+      },
+      "D24": {
+       "status": "clear"
+      },
+      "D26": {
+       "reason": "No complete ClientHello / JA3 observed for this flow.",
+       "status": "not_evaluated"
+      },
+      "D28": {
+       "status": "clear"
+      },
+      "D3": {
+       "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
+       "status": "not_evaluated"
+      },
+      "D4": {
+       "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
+       "status": "not_evaluated"
+      },
+      "D5": {
+       "reason": "Insufficient upload/download ratio history for this entity.",
+       "status": "not_evaluated"
+      },
+      "D6": {
+       "status": "clear"
+      },
+      "D7": {
+       "reason": "Initialising hourly outbound baseline.",
+       "status": "not_evaluated"
+      },
+      "D8": {
+       "evidence": [],
+       "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+       "score": 20.0,
+       "severity": "LOW",
+       "status": "triggered"
+      },
+      "D9": {
+       "reason": "Evaluated when the entity's current day closes.",
+       "status": "not_evaluated"
+      }
+     },
+     "rule_score": 61.3,
+     "rule_severity": "MEDIUM",
+     "triggered": [
+      "D20",
+      "D8"
+     ]
+    },
+    "device_id": "10.20.0.16",
+    "direction": "outbound",
+    "dst_ip": "198.51.100.23",
+    "dst_port": 3389,
+    "duration_seconds": 15.3707,
+    "entity_key": "addr:10.20.0.16",
+    "event_time": "2025-10-14T06:00:00",
+    "event_type": "network_flow",
+    "event_uuid": "EVT-062D28915FA5",
+    "flow_duration": 15.3707,
+    "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
+    "hybrid_risk": {
+     "ai_risk_score": 100.0,
+     "alert": true,
+     "anomaly_score": 41.24672003,
+     "anomaly_threshold": 0.07018400015809657,
+     "detection_source": "hybrid",
+     "detector_errors": [],
+     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+     "feature_coverage": {
+      "imputed": 14,
+      "imputed_features": [
+       "Fwd Byts/b Avg",
+       "Fwd Pkts/b Avg",
+       "Fwd Blk Rate Avg",
+       "Bwd Byts/b Avg",
+       "Bwd Pkts/b Avg",
+       "Bwd Blk Rate Avg",
+       "Active Mean",
+       "Active Std",
+       "Active Max",
+       "Active Min",
+       "Idle Mean",
+       "Idle Std",
+       "Idle Max",
+       "Idle Min"
+      ],
+      "measured_flow_features": 57,
+      "observed": 64,
+      "total": 78,
+      "zero_by_definition": 0
+     },
+     "final_risk_level": "CRITICAL",
+     "final_risk_score": 100.0,
+     "insufficient_data": [
+      {
+       "detector_id": "D1",
+       "reason": "Insufficient baseline: 0 prior transfers (< 20)."
+      },
+      {
+       "detector_id": "D10",
+       "reason": "Evaluated when the entity's current day closes."
+      },
+      {
+       "detector_id": "D18",
+       "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP."
+      },
+      {
+       "detector_id": "D19",
+       "reason": "0/8 connection intervals observed for this destination."
+      },
+      {
+       "detector_id": "D2",
+       "reason": "Destination history warming up (0/200 flows)."
+      },
+      {
+       "detector_id": "D26",
+       "reason": "No complete ClientHello / JA3 observed for this flow."
+      },
+      {
+       "detector_id": "D3",
+       "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files)."
+      },
+      {
+       "detector_id": "D4",
+       "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7)."
+      },
+      {
+       "detector_id": "D5",
+       "reason": "Insufficient upload/download ratio history for this entity."
+      },
+      {
+       "detector_id": "D7",
+       "reason": "Initialising hourly outbound baseline."
+      },
+      {
+       "detector_id": "D9",
+       "reason": "Evaluated when the entity's current day closes."
+      }
+     ],
+     "is_anomalous": true,
+     "model_reason": null,
+     "model_status": "scored",
+     "policy": "ai_risk = 50\u00b7(score/threshold) below the threshold, 60 + 25\u00b7log2(score/threshold) at or above it (capped at 100); final = noisy-OR(ai_risk, rule_score) over the components that exist; alert when KitNET is anomalous (score > threshold) or the rule layer's alert condition holds",
+     "rule_alert_due": true,
+     "rule_score": 61.3,
+     "rule_severity": "MEDIUM",
+     "rule_status": "evaluated",
+     "top_features": [
+      {
+       "contribution_pct": 71.97,
+       "description": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+       "display_name": "Fwd PSH Flags",
+       "feature_name": "Fwd PSH Flags",
+       "input_value": 7300.0,
+       "reconstruction_error": 109664.171875,
+       "training_median": 0.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 17.13,
+       "description": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+       "display_name": "PSH Flag Cnt",
+       "feature_name": "PSH Flag Cnt",
+       "input_value": 7300.0,
+       "reconstruction_error": 26101.585938,
+       "training_median": 0.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 6.42,
+       "description": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+       "display_name": "ACK Flag Cnt",
+       "feature_name": "ACK Flag Cnt",
+       "input_value": 7669.0,
+       "reconstruction_error": 9788.140625,
+       "training_median": 1.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 2.2,
+       "description": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+       "display_name": "Subflow Fwd Byts",
+       "feature_name": "Subflow Fwd Byts",
+       "input_value": 11052406.0,
+       "reconstruction_error": 3347.007812,
+       "training_median": 60.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 2.2,
+       "description": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+       "display_name": "TotLen Fwd Pkts",
+       "feature_name": "TotLen Fwd Pkts",
+       "input_value": 11052406.0,
+       "reconstruction_error": 3347.007812,
+       "training_median": 60.0,
+       "value_source": "observed"
+      }
+     ],
+     "triggered_detectors": [
+      {
+       "baseline": null,
+       "category": "security",
+       "detector_id": "D20",
+       "evidence": [],
+       "evidence_only": false,
+       "group": "destination",
+       "name": "Remote desktop out",
+       "observed": {
+        "entity_key": "addr:10.20.0.16",
+        "org_direction": "outbound",
+        "outbound_bytes": 11052406.0,
+        "protocol": "TCP",
+        "responder": "198.51.100.23",
+        "service_port": 3389
+       },
+       "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+       "score": 70.0,
+       "severity": "HIGH",
+       "signal_id": "SIG-55C9E477B2D7",
+       "threshold": {
+        "approved_destinations": []
+       }
+      },
+      {
+       "baseline": null,
+       "category": "security",
+       "detector_id": "D8",
+       "evidence": [],
+       "evidence_only": true,
+       "group": "protocol",
+       "name": "Automated transfer",
+       "observed": {
+        "entity_key": "addr:10.20.0.16",
+        "iat_cv": 0.2338,
+        "iat_entropy_bits": 0.0039,
+        "iat_entropy_normalized": 0.001,
+        "iat_histogram": [
+         0,
+         0,
+         7300,
+         1,
+         1,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ],
+        "outbound_bytes": 11052406.0,
+        "outbound_packets": 7303,
+        "size_entropy_normalized": 0.0016,
+        "size_histogram": [
+         0,
+         3,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         7300
+        ]
+       },
+       "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+       "score": 20.0,
+       "severity": "LOW",
+       "signal_id": "SIG-96166E19A3CA",
+       "threshold": {
+        "max_iat_cv": 0.5,
+        "max_iat_entropy_normalized": 0.35,
+        "min_outbound_bytes": 1048576
+       }
+      }
+     ]
+    },
+    "id": 1,
+    "outcome": null,
+    "packet_count": 7670,
+    "packets_in": 367,
+    "packets_out": 7303,
+    "processing_error": null,
+    "processing_status": "complete",
+    "protocol": "TCP",
+    "received_at": "2026-10-16T00:56:54.316129",
+    "source": "pcap",
+    "src_ip": "10.20.0.16",
+    "src_port": 52000,
+    "timestamp": "2025-10-14T06:00:00+00:00",
+    "tls_sni": null,
+    "user_id": null
+   }
+  ],
+  "evidence": [
+   {
+    "contribution_pct": 71.97,
+    "description": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+    "display_name": "Fwd PSH Flags",
+    "feature_name": "Fwd PSH Flags",
+    "input_value": 7300.0,
+    "reconstruction_error": 109664.171875,
+    "training_median": 0.0,
+    "value_source": "observed"
+   },
+   {
+    "contribution_pct": 17.13,
+    "description": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+    "display_name": "PSH Flag Cnt",
+    "feature_name": "PSH Flag Cnt",
+    "input_value": 7300.0,
+    "reconstruction_error": 26101.585938,
+    "training_median": 0.0,
+    "value_source": "observed"
+   },
+   {
+    "contribution_pct": 6.42,
+    "description": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+    "display_name": "ACK Flag Cnt",
+    "feature_name": "ACK Flag Cnt",
+    "input_value": 7669.0,
+    "reconstruction_error": 9788.140625,
+    "training_median": 1.0,
+    "value_source": "observed"
+   },
+   {
+    "contribution_pct": 2.2,
+    "description": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+    "display_name": "Subflow Fwd Byts",
+    "feature_name": "Subflow Fwd Byts",
+    "input_value": 11052406.0,
+    "reconstruction_error": 3347.007812,
+    "training_median": 60.0,
+    "value_source": "observed"
+   },
+   {
+    "contribution_pct": 2.2,
+    "description": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+    "display_name": "TotLen Fwd Pkts",
+    "feature_name": "TotLen Fwd Pkts",
+    "input_value": 11052406.0,
+    "reconstruction_error": 3347.007812,
+    "training_median": 60.0,
+    "value_source": "observed"
+   }
+  ],
+  "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+  "final_risk_level": "CRITICAL",
+  "hybrid_risk": {
+   "ai_risk_score": 100.0,
+   "alert": true,
+   "anomaly_score": 41.24672003,
+   "anomaly_threshold": 0.07018400015809657,
+   "detection_source": "hybrid",
+   "detector_errors": [],
+   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+   "feature_coverage": {
+    "imputed": 14,
+    "imputed_features": [
+     "Fwd Byts/b Avg",
+     "Fwd Pkts/b Avg",
+     "Fwd Blk Rate Avg",
+     "Bwd Byts/b Avg",
+     "Bwd Pkts/b Avg",
+     "Bwd Blk Rate Avg",
+     "Active Mean",
+     "Active Std",
+     "Active Max",
+     "Active Min",
+     "Idle Mean",
+     "Idle Std",
+     "Idle Max",
+     "Idle Min"
+    ],
+    "measured_flow_features": 57,
+    "observed": 64,
+    "total": 78,
+    "zero_by_definition": 0
+   },
+   "final_risk_level": "CRITICAL",
+   "final_risk_score": 100.0,
+   "insufficient_data": [
+    {
+     "detector_id": "D1",
+     "reason": "Insufficient baseline: 0 prior transfers (< 20)."
+    },
+    {
+     "detector_id": "D10",
+     "reason": "Evaluated when the entity's current day closes."
+    },
+    {
+     "detector_id": "D18",
+     "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP."
+    },
+    {
+     "detector_id": "D19",
+     "reason": "0/8 connection intervals observed for this destination."
+    },
+    {
+     "detector_id": "D2",
+     "reason": "Destination history warming up (0/200 flows)."
+    },
+    {
+     "detector_id": "D26",
+     "reason": "No complete ClientHello / JA3 observed for this flow."
+    },
+    {
+     "detector_id": "D3",
+     "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files)."
+    },
+    {
+     "detector_id": "D4",
+     "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7)."
+    },
+    {
+     "detector_id": "D5",
+     "reason": "Insufficient upload/download ratio history for this entity."
+    },
+    {
+     "detector_id": "D7",
+     "reason": "Initialising hourly outbound baseline."
+    },
+    {
+     "detector_id": "D9",
+     "reason": "Evaluated when the entity's current day closes."
+    }
+   ],
+   "is_anomalous": true,
+   "model_reason": null,
+   "model_status": "scored",
+   "policy": "ai_risk = 50\u00b7(score/threshold) below the threshold, 60 + 25\u00b7log2(score/threshold) at or above it (capped at 100); final = noisy-OR(ai_risk, rule_score) over the components that exist; alert when KitNET is anomalous (score > threshold) or the rule layer's alert condition holds",
+   "rule_alert_due": true,
+   "rule_score": 61.3,
+   "rule_severity": "MEDIUM",
+   "rule_status": "evaluated",
+   "top_features": [
+    {
+     "contribution_pct": 71.97,
+     "description": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+     "display_name": "Fwd PSH Flags",
+     "feature_name": "Fwd PSH Flags",
+     "input_value": 7300.0,
+     "reconstruction_error": 109664.171875,
+     "training_median": 0.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 17.13,
+     "description": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+     "display_name": "PSH Flag Cnt",
+     "feature_name": "PSH Flag Cnt",
+     "input_value": 7300.0,
+     "reconstruction_error": 26101.585938,
+     "training_median": 0.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 6.42,
+     "description": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+     "display_name": "ACK Flag Cnt",
+     "feature_name": "ACK Flag Cnt",
+     "input_value": 7669.0,
+     "reconstruction_error": 9788.140625,
+     "training_median": 1.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 2.2,
+     "description": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+     "display_name": "Subflow Fwd Byts",
+     "feature_name": "Subflow Fwd Byts",
+     "input_value": 11052406.0,
+     "reconstruction_error": 3347.007812,
+     "training_median": 60.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 2.2,
+     "description": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+     "display_name": "TotLen Fwd Pkts",
+     "feature_name": "TotLen Fwd Pkts",
+     "input_value": 11052406.0,
+     "reconstruction_error": 3347.007812,
+     "training_median": 60.0,
+     "value_source": "observed"
+    }
+   ],
+   "triggered_detectors": [
+    {
+     "baseline": null,
+     "category": "security",
+     "detector_id": "D20",
+     "evidence": [],
+     "evidence_only": false,
+     "group": "destination",
+     "name": "Remote desktop out",
+     "observed": {
+      "entity_key": "addr:10.20.0.16",
+      "org_direction": "outbound",
+      "outbound_bytes": 11052406.0,
+      "protocol": "TCP",
+      "responder": "198.51.100.23",
+      "service_port": 3389
+     },
+     "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+     "score": 70.0,
+     "severity": "HIGH",
+     "signal_id": "SIG-55C9E477B2D7",
+     "threshold": {
+      "approved_destinations": []
+     }
+    },
+    {
+     "baseline": null,
+     "category": "security",
+     "detector_id": "D8",
+     "evidence": [],
+     "evidence_only": true,
+     "group": "protocol",
+     "name": "Automated transfer",
+     "observed": {
+      "entity_key": "addr:10.20.0.16",
+      "iat_cv": 0.2338,
+      "iat_entropy_bits": 0.0039,
+      "iat_entropy_normalized": 0.001,
+      "iat_histogram": [
+       0,
+       0,
+       7300,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "outbound_bytes": 11052406.0,
+      "outbound_packets": 7303,
+      "size_entropy_normalized": 0.0016,
+      "size_histogram": [
+       0,
+       3,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       7300
+      ]
+     },
+     "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+     "score": 20.0,
+     "severity": "LOW",
+     "signal_id": "SIG-96166E19A3CA",
+     "threshold": {
+      "max_iat_cv": 0.5,
+      "max_iat_entropy_normalized": 0.35,
+      "min_outbound_bytes": 1048576
+     }
+    }
+   ]
+  },
+  "id": 1,
+  "is_external_dst": true,
+  "metadata": {
+   "alert_uuid": "ALT-E7563A1BD8",
+   "anomaly_score": 41.2467,
+   "confidence": null,
+   "detection_source": "hybrid",
+   "disposition": null,
+   "entity": "addr:10.20.0.16",
+   "external_destination": true,
+   "off_hours": false,
+   "protocol": "TCP",
+   "source_port": 52000,
+   "z_score": null
+  },
+  "mitigation": [
+   "Inspect the KitNET top contributing features; note which were measured and which imputed.",
+   "Review the listed signals and their observed values against the stated baselines.",
+   "Check the destination/protocol against the egress policy and block if unapproved.",
+   "Resolve the alert as benign / false positive to let these observations re-enter the baseline."
+  ],
+  "model_status": "scored",
+  "model_version": "trustlab-dfcfe450f3d4",
+  "model_version_id": 1,
+  "off_hours": false,
+  "protocol": "TCP",
+  "resolved_at": null,
+  "risk_contributions": [
+   {
+    "contribution": 71.97,
+    "explanation": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+    "label": "Fwd PSH Flags",
+    "signal": "Fwd PSH Flags"
+   },
+   {
+    "contribution": 17.13,
+    "explanation": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+    "label": "PSH Flag Cnt",
+    "signal": "PSH Flag Cnt"
+   },
+   {
+    "contribution": 6.42,
+    "explanation": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+    "label": "ACK Flag Cnt",
+    "signal": "ACK Flag Cnt"
+   },
+   {
+    "contribution": 2.2,
+    "explanation": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+    "label": "Subflow Fwd Byts",
+    "signal": "Subflow Fwd Byts"
+   },
+   {
+    "contribution": 2.2,
+    "explanation": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+    "label": "TotLen Fwd Pkts",
+    "signal": "TotLen Fwd Pkts"
+   },
+   {
+    "contribution": 77.8,
+    "explanation": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+    "label": "Remote desktop out",
+    "signal": "D20"
+   },
+   {
+    "contribution": 22.2,
+    "explanation": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+    "label": "Automated transfer",
+    "signal": "D8"
+   }
+  ],
+  "risk_factors": [
+   "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+  ],
+  "risk_score": 100.0,
+  "rule_score": 61.3,
+  "rule_signals": [
+   {
+    "detector_id": "D20",
+    "evidence": [],
+    "name": "Remote desktop out",
+    "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+    "score": 70.0,
+    "severity": "HIGH",
+    "signal_id": "SIG-55C9E477B2D7"
+   },
+   {
+    "detector_id": "D8",
+    "evidence": [],
+    "name": "Automated transfer",
+    "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+    "score": 20.0,
+    "severity": "LOW",
+    "signal_id": "SIG-96166E19A3CA"
+   }
+  ],
+  "scoring_status": "ok",
+  "severity": "CRITICAL",
+  "signal_count": 2,
+  "signals": [
+   {
+    "code": "anomaly",
+    "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+   },
+   {
+    "code": "D20",
+    "label": "D20 Remote desktop out"
+   },
+   {
+    "code": "D8",
+    "label": "D8 Automated transfer"
+   }
+  ],
+  "source": "pcap",
+  "source_events": [
+   {
+    "action": null,
+    "ai_error": null,
+    "ai_processed": true,
+    "alert_id": 1,
+    "anomaly_score": 41.24672,
+    "bytes_in": 24230,
+    "bytes_out": 11052406,
+    "bytes_transferred": 11076636,
+    "data_source": "pcap",
+    "details": {
+     "app_protocol": null,
+     "bwd": {
+      "app_hint": null,
+      "bytes": 24230,
+      "header_bytes": 14680,
+      "iat_histogram": {
+       "counts": [
+        0,
+        0,
+        0,
+        0,
+        365,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        0.0001,
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+       ],
+       "entropy_bits": 0.0272,
+       "entropy_normalized": 0.0071,
+       "samples": 366
+      },
+      "init_window": 65160,
+      "inter_arrival_s": {
+       "max": 0.060002,
+       "mean": 0.041969,
+       "min": 0.012,
+       "std": 0.001829
+      },
+      "inter_arrival_total_s": 15.360716,
+      "packet_size": {
+       "max": 74,
+       "mean": 66.02,
+       "min": 66,
+       "std": 0.42
+      },
+      "packets": 367,
+      "payload_packets": 367,
+      "psh_flags": 0,
+      "size_histogram": {
+       "counts": [
+        0,
+        367,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024,
+        1280,
+        1400,
+        1500
+       ],
+       "entropy_bits": -0.0,
+       "entropy_normalized": -0.0,
+       "samples": 367
+      },
+      "urg_flags": 0
+     },
+     "bwd_bytes": 24230,
+     "bwd_packets": 367,
+     "duration_s": 15.370716,
+     "end_reason": "tcp_close",
+     "end_time": 1760421615.3707163,
+     "external_ip": "198.51.100.23",
+     "fwd": {
+      "app_hint": null,
+      "bytes": 11052406,
+      "header_bytes": 292120,
+      "iat_histogram": {
+       "counts": [
+        0,
+        0,
+        7300,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "edges": [
+        0.0001,
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+       ],
+       "entropy_bits": 0.0039,
+       "entropy_normalized": 0.001,
+       "samples": 7302
+      },
+      "init_window": 64240,
+      "inter_arrival_s": {
+       "max": 0.02,
+       "mean": 0.002104,
+       "min": 0.002,
+       "std": 0.000492
+      },
+      "inter_arrival_total_s": 15.360716,
+      "packet_size": {
+       "max": 1514,
+       "mean": 1513.41,
+       "min": 66,
+       "std": 29.29
+      },
+      "packets": 7303,
+      "payload_packets": 7303,
+      "psh_flags": 7300,
+      "size_histogram": {
+       "counts": [
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7300
+       ],
+       "edges": [
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024,
+        1280,
+        1400,
+        1500
+       ],
+       "entropy_bits": 0.0052,
+       "entropy_normalized": 0.0016,
+       "samples": 7303
+      },
+      "urg_flags": 0
+     },
+     "fwd_bytes": 11052406,
+     "fwd_packets": 7303,
+     "inbound_bytes": 24230,
+     "inbound_packets": 367,
+     "init_mac": null,
+     "initiator_inferred": false,
+     "inter_arrival_s": {
+      "max": 0.01,
+      "mean": 0.002004,
+      "min": 0.002,
+      "std": 0.000183
+     },
+     "internal_ip": "10.20.0.16",
+     "org_direction": "outbound",
+     "outbound_bytes": 11052406,
+     "outbound_packets": 7303,
+     "packet_size": {
+      "max": 1514,
+      "mean": 1444.15,
+      "min": 66,
+      "std": 310.26
+     },
+     "resp_mac": null,
+     "start_time": 1760421600.0,
+     "tcp_flags": {
+      "ack": 7669,
+      "ece": 0,
+      "fin": 2,
+      "psh": 7300,
+      "rst": 0,
+      "syn": 2,
+      "urg": 0
+     },
+     "tcp_outcome": "established",
+     "total_bytes": 11076636,
+     "total_packets": 7670
+    },
+    "detection_status": "scored",
+    "detection_summary": {
+     "alert_created": true,
+     "alert_due": true,
+     "alert_id": "ALT-E7563A1BD8",
+     "engine_version": "1.0",
+     "entity_key": "addr:10.20.0.16",
+     "entity_kind": "addr",
+     "errors": [],
+     "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+     "flagged": true,
+     "not_evaluated": [
+      "D1",
+      "D10",
+      "D18",
+      "D19",
+      "D2",
+      "D26",
+      "D3",
+      "D4",
+      "D5",
+      "D7",
+      "D9"
+     ],
+     "results": {
+      "D1": {
+       "reason": "Insufficient baseline: 0 prior transfers (< 20).",
+       "status": "not_evaluated"
+      },
+      "D10": {
+       "reason": "Evaluated when the entity's current day closes.",
+       "status": "not_evaluated"
+      },
+      "D12": {
+       "status": "clear"
+      },
+      "D17": {
+       "status": "clear"
+      },
+      "D18": {
+       "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
+       "status": "not_evaluated"
+      },
+      "D19": {
+       "reason": "0/8 connection intervals observed for this destination.",
+       "status": "not_evaluated"
+      },
+      "D2": {
+       "reason": "Destination history warming up (0/200 flows).",
+       "status": "not_evaluated"
+      },
+      "D20": {
+       "evidence": [],
+       "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+       "score": 70.0,
+       "severity": "HIGH",
+       "status": "triggered"
+      },
+      "D21": {
+       "status": "clear"
+      },
+      "D22": {
+       "status": "clear"
+      },
+      "D23": {
+       "status": "clear"
+      },
+      "D24": {
+       "status": "clear"
+      },
+      "D26": {
+       "reason": "No complete ClientHello / JA3 observed for this flow.",
+       "status": "not_evaluated"
+      },
+      "D28": {
+       "status": "clear"
+      },
+      "D3": {
+       "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
+       "status": "not_evaluated"
+      },
+      "D4": {
+       "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
+       "status": "not_evaluated"
+      },
+      "D5": {
+       "reason": "Insufficient upload/download ratio history for this entity.",
+       "status": "not_evaluated"
+      },
+      "D6": {
+       "status": "clear"
+      },
+      "D7": {
+       "reason": "Initialising hourly outbound baseline.",
+       "status": "not_evaluated"
+      },
+      "D8": {
+       "evidence": [],
+       "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+       "score": 20.0,
+       "severity": "LOW",
+       "status": "triggered"
+      },
+      "D9": {
+       "reason": "Evaluated when the entity's current day closes.",
+       "status": "not_evaluated"
+      }
+     },
+     "rule_score": 61.3,
+     "rule_severity": "MEDIUM",
+     "triggered": [
+      "D20",
+      "D8"
+     ]
+    },
+    "device_id": "10.20.0.16",
+    "direction": "outbound",
+    "dst_ip": "198.51.100.23",
+    "dst_port": 3389,
+    "duration_seconds": 15.3707,
+    "entity_key": "addr:10.20.0.16",
+    "event_time": "2025-10-14T06:00:00",
+    "event_type": "network_flow",
+    "event_uuid": "EVT-062D28915FA5",
+    "flow_duration": 15.3707,
+    "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
+    "hybrid_risk": {
+     "ai_risk_score": 100.0,
+     "alert": true,
+     "anomaly_score": 41.24672003,
+     "anomaly_threshold": 0.07018400015809657,
+     "detection_source": "hybrid",
+     "detector_errors": [],
+     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+     "feature_coverage": {
+      "imputed": 14,
+      "imputed_features": [
+       "Fwd Byts/b Avg",
+       "Fwd Pkts/b Avg",
+       "Fwd Blk Rate Avg",
+       "Bwd Byts/b Avg",
+       "Bwd Pkts/b Avg",
+       "Bwd Blk Rate Avg",
+       "Active Mean",
+       "Active Std",
+       "Active Max",
+       "Active Min",
+       "Idle Mean",
+       "Idle Std",
+       "Idle Max",
+       "Idle Min"
+      ],
+      "measured_flow_features": 57,
+      "observed": 64,
+      "total": 78,
+      "zero_by_definition": 0
+     },
+     "final_risk_level": "CRITICAL",
+     "final_risk_score": 100.0,
+     "insufficient_data": [
+      {
+       "detector_id": "D1",
+       "reason": "Insufficient baseline: 0 prior transfers (< 20)."
+      },
+      {
+       "detector_id": "D10",
+       "reason": "Evaluated when the entity's current day closes."
+      },
+      {
+       "detector_id": "D18",
+       "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP."
+      },
+      {
+       "detector_id": "D19",
+       "reason": "0/8 connection intervals observed for this destination."
+      },
+      {
+       "detector_id": "D2",
+       "reason": "Destination history warming up (0/200 flows)."
+      },
+      {
+       "detector_id": "D26",
+       "reason": "No complete ClientHello / JA3 observed for this flow."
+      },
+      {
+       "detector_id": "D3",
+       "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files)."
+      },
+      {
+       "detector_id": "D4",
+       "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7)."
+      },
+      {
+       "detector_id": "D5",
+       "reason": "Insufficient upload/download ratio history for this entity."
+      },
+      {
+       "detector_id": "D7",
+       "reason": "Initialising hourly outbound baseline."
+      },
+      {
+       "detector_id": "D9",
+       "reason": "Evaluated when the entity's current day closes."
+      }
+     ],
+     "is_anomalous": true,
+     "model_reason": null,
+     "model_status": "scored",
+     "policy": "ai_risk = 50\u00b7(score/threshold) below the threshold, 60 + 25\u00b7log2(score/threshold) at or above it (capped at 100); final = noisy-OR(ai_risk, rule_score) over the components that exist; alert when KitNET is anomalous (score > threshold) or the rule layer's alert condition holds",
+     "rule_alert_due": true,
+     "rule_score": 61.3,
+     "rule_severity": "MEDIUM",
+     "rule_status": "evaluated",
+     "top_features": [
+      {
+       "contribution_pct": 71.97,
+       "description": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+       "display_name": "Fwd PSH Flags",
+       "feature_name": "Fwd PSH Flags",
+       "input_value": 7300.0,
+       "reconstruction_error": 109664.171875,
+       "training_median": 0.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 17.13,
+       "description": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+       "display_name": "PSH Flag Cnt",
+       "feature_name": "PSH Flag Cnt",
+       "input_value": 7300.0,
+       "reconstruction_error": 26101.585938,
+       "training_median": 0.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 6.42,
+       "description": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+       "display_name": "ACK Flag Cnt",
+       "feature_name": "ACK Flag Cnt",
+       "input_value": 7669.0,
+       "reconstruction_error": 9788.140625,
+       "training_median": 1.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 2.2,
+       "description": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+       "display_name": "Subflow Fwd Byts",
+       "feature_name": "Subflow Fwd Byts",
+       "input_value": 11052406.0,
+       "reconstruction_error": 3347.007812,
+       "training_median": 60.0,
+       "value_source": "observed"
+      },
+      {
+       "contribution_pct": 2.2,
+       "description": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+       "display_name": "TotLen Fwd Pkts",
+       "feature_name": "TotLen Fwd Pkts",
+       "input_value": 11052406.0,
+       "reconstruction_error": 3347.007812,
+       "training_median": 60.0,
+       "value_source": "observed"
+      }
+     ],
+     "triggered_detectors": [
+      {
+       "baseline": null,
+       "category": "security",
+       "detector_id": "D20",
+       "evidence": [],
+       "evidence_only": false,
+       "group": "destination",
+       "name": "Remote desktop out",
+       "observed": {
+        "entity_key": "addr:10.20.0.16",
+        "org_direction": "outbound",
+        "outbound_bytes": 11052406.0,
+        "protocol": "TCP",
+        "responder": "198.51.100.23",
+        "service_port": 3389
+       },
+       "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+       "score": 70.0,
+       "severity": "HIGH",
+       "signal_id": "SIG-55C9E477B2D7",
+       "threshold": {
+        "approved_destinations": []
+       }
+      },
+      {
+       "baseline": null,
+       "category": "security",
+       "detector_id": "D8",
+       "evidence": [],
+       "evidence_only": true,
+       "group": "protocol",
+       "name": "Automated transfer",
+       "observed": {
+        "entity_key": "addr:10.20.0.16",
+        "iat_cv": 0.2338,
+        "iat_entropy_bits": 0.0039,
+        "iat_entropy_normalized": 0.001,
+        "iat_histogram": [
+         0,
+         0,
+         7300,
+         1,
+         1,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ],
+        "outbound_bytes": 11052406.0,
+        "outbound_packets": 7303,
+        "size_entropy_normalized": 0.0016,
+        "size_histogram": [
+         0,
+         3,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         7300
+        ]
+       },
+       "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+       "score": 20.0,
+       "severity": "LOW",
+       "signal_id": "SIG-96166E19A3CA",
+       "threshold": {
+        "max_iat_cv": 0.5,
+        "max_iat_entropy_normalized": 0.35,
+        "min_outbound_bytes": 1048576
+       }
+      }
+     ]
+    },
+    "id": 1,
+    "outcome": null,
+    "packet_count": 7670,
+    "packets_in": 367,
+    "packets_out": 7303,
+    "processing_error": null,
+    "processing_status": "complete",
+    "protocol": "TCP",
+    "received_at": "2026-10-16T00:56:54.316129",
+    "source": "pcap",
+    "src_ip": "10.20.0.16",
+    "src_port": 52000,
+    "timestamp": "2025-10-14T06:00:00+00:00",
+    "tls_sni": null,
+    "user_id": null
+   }
+  ],
+  "source_ip": "10.20.0.16",
+  "src_ip": "10.20.0.16",
+  "src_port": 52000,
+  "status": "open",
+  "updated_at": null,
+  "user_id": null,
+  "z_score": null
+ },
+ "alert_list": {
+  "alerts": [
+   {
+    "alert_uuid": "ALT-E7563A1BD8",
+    "anomaly_score": 41.2467,
+    "anomaly_threshold": 0.07018400015809657,
+    "bytes_out": 11052406,
+    "created_at": "2026-10-16T00:56:54.338086+00:00",
+    "data_source": "pcap",
+    "destination": "198.51.100.23",
+    "destination_port": 3389,
+    "detection_source": "hybrid",
+    "device_id": "10.20.0.16",
+    "disposition": null,
+    "dst_ip": "198.51.100.23",
+    "dst_port": 3389,
+    "final_risk_level": "CRITICAL",
+    "id": 1,
+    "model_status": "scored",
+    "risk_score": 100.0,
+    "rule_score": 61.3,
+    "scoring_status": "ok",
+    "severity": "CRITICAL",
+    "signal_count": 2,
+    "signals": [
+     {
+      "code": "anomaly",
+      "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+     },
+     {
+      "code": "D20",
+      "label": "D20 Remote desktop out"
+     },
+     {
+      "code": "D8",
+      "label": "D8 Automated transfer"
+     }
+    ],
+    "source": "pcap",
+    "source_ip": "10.20.0.16",
+    "src_ip": "10.20.0.16",
+    "status": "open"
+   }
+  ],
+  "items": [
+   {
+    "alert_uuid": "ALT-E7563A1BD8",
+    "anomaly_score": 41.2467,
+    "anomaly_threshold": 0.07018400015809657,
+    "bytes_out": 11052406,
+    "created_at": "2026-10-16T00:56:54.338086+00:00",
+    "data_source": "pcap",
+    "destination": "198.51.100.23",
+    "destination_port": 3389,
+    "detection_source": "hybrid",
+    "device_id": "10.20.0.16",
+    "disposition": null,
+    "dst_ip": "198.51.100.23",
+    "dst_port": 3389,
+    "final_risk_level": "CRITICAL",
+    "id": 1,
+    "model_status": "scored",
+    "risk_score": 100.0,
+    "rule_score": 61.3,
+    "scoring_status": "ok",
+    "severity": "CRITICAL",
+    "signal_count": 2,
+    "signals": [
+     {
+      "code": "anomaly",
+      "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+     },
+     {
+      "code": "D20",
+      "label": "D20 Remote desktop out"
+     },
+     {
+      "code": "D8",
+      "label": "D8 Automated transfer"
+     }
+    ],
+    "source": "pcap",
+    "source_ip": "10.20.0.16",
+    "src_ip": "10.20.0.16",
+    "status": "open"
+   }
+  ],
+  "page": 1,
+  "pages": 1,
+  "per_page": 20,
+  "total": 1
+ },
+ "event_detail": {
+  "action": null,
+  "ai_error": null,
+  "ai_processed": true,
+  "alert": {
+   "alert_uuid": "ALT-E7563A1BD8",
+   "anomaly_score": 41.2467,
+   "anomaly_threshold": 0.07018400015809657,
+   "bytes_out": 11052406,
+   "created_at": "2026-10-16T00:56:54.338086+00:00",
+   "data_source": "pcap",
+   "destination": "198.51.100.23",
+   "destination_port": 3389,
+   "detection_source": "hybrid",
+   "device_id": "10.20.0.16",
+   "disposition": null,
+   "dst_ip": "198.51.100.23",
+   "dst_port": 3389,
+   "final_risk_level": "CRITICAL",
+   "id": 1,
+   "model_status": "scored",
+   "risk_score": 100.0,
+   "rule_score": 61.3,
+   "scoring_status": "ok",
+   "severity": "CRITICAL",
+   "signal_count": 2,
+   "signals": [
+    {
+     "code": "anomaly",
+     "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+    },
+    {
+     "code": "D20",
+     "label": "D20 Remote desktop out"
+    },
+    {
+     "code": "D8",
+     "label": "D8 Automated transfer"
+    }
+   ],
+   "source": "pcap",
+   "source_ip": "10.20.0.16",
+   "src_ip": "10.20.0.16",
+   "status": "open"
+  },
+  "alert_id": 1,
+  "anomaly_score": 41.24672,
+  "bytes_in": 24230,
+  "bytes_out": 11052406,
+  "bytes_transferred": 11076636,
+  "correlations": [],
+  "data_source": "pcap",
+  "details": {
+   "app_protocol": null,
+   "bwd": {
+    "app_hint": null,
+    "bytes": 24230,
+    "header_bytes": 14680,
+    "iat_histogram": {
+     "counts": [
+      0,
+      0,
+      0,
+      0,
+      365,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "edges": [
+      0.0001,
+      0.001,
+      0.005,
+      0.01,
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      1.0,
+      2.0,
+      5.0,
+      10.0,
+      30.0
+     ],
+     "entropy_bits": 0.0272,
+     "entropy_normalized": 0.0071,
+     "samples": 366
+    },
+    "init_window": 65160,
+    "inter_arrival_s": {
+     "max": 0.060002,
+     "mean": 0.041969,
+     "min": 0.012,
+     "std": 0.001829
+    },
+    "inter_arrival_total_s": 15.360716,
+    "packet_size": {
+     "max": 74,
+     "mean": 66.02,
+     "min": 66,
+     "std": 0.42
+    },
+    "packets": 367,
+    "payload_packets": 367,
+    "psh_flags": 0,
+    "size_histogram": {
+     "counts": [
+      0,
+      367,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "edges": [
+      64,
+      128,
+      256,
+      512,
+      768,
+      1024,
+      1280,
+      1400,
+      1500
+     ],
+     "entropy_bits": -0.0,
+     "entropy_normalized": -0.0,
+     "samples": 367
+    },
+    "urg_flags": 0
+   },
+   "bwd_bytes": 24230,
+   "bwd_packets": 367,
+   "duration_s": 15.370716,
+   "end_reason": "tcp_close",
+   "end_time": 1760421615.3707163,
+   "external_ip": "198.51.100.23",
+   "fwd": {
+    "app_hint": null,
+    "bytes": 11052406,
+    "header_bytes": 292120,
+    "iat_histogram": {
+     "counts": [
+      0,
+      0,
+      7300,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "edges": [
+      0.0001,
+      0.001,
+      0.005,
+      0.01,
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      1.0,
+      2.0,
+      5.0,
+      10.0,
+      30.0
+     ],
+     "entropy_bits": 0.0039,
+     "entropy_normalized": 0.001,
+     "samples": 7302
+    },
+    "init_window": 64240,
+    "inter_arrival_s": {
+     "max": 0.02,
+     "mean": 0.002104,
+     "min": 0.002,
+     "std": 0.000492
+    },
+    "inter_arrival_total_s": 15.360716,
+    "packet_size": {
+     "max": 1514,
+     "mean": 1513.41,
+     "min": 66,
+     "std": 29.29
+    },
+    "packets": 7303,
+    "payload_packets": 7303,
+    "psh_flags": 7300,
+    "size_histogram": {
+     "counts": [
+      0,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      7300
+     ],
+     "edges": [
+      64,
+      128,
+      256,
+      512,
+      768,
+      1024,
+      1280,
+      1400,
+      1500
+     ],
+     "entropy_bits": 0.0052,
+     "entropy_normalized": 0.0016,
+     "samples": 7303
+    },
+    "urg_flags": 0
+   },
+   "fwd_bytes": 11052406,
+   "fwd_packets": 7303,
+   "inbound_bytes": 24230,
+   "inbound_packets": 367,
+   "init_mac": null,
+   "initiator_inferred": false,
+   "inter_arrival_s": {
+    "max": 0.01,
+    "mean": 0.002004,
+    "min": 0.002,
+    "std": 0.000183
+   },
+   "internal_ip": "10.20.0.16",
+   "org_direction": "outbound",
+   "outbound_bytes": 11052406,
+   "outbound_packets": 7303,
+   "packet_size": {
+    "max": 1514,
+    "mean": 1444.15,
+    "min": 66,
+    "std": 310.26
+   },
+   "resp_mac": null,
+   "start_time": 1760421600.0,
+   "tcp_flags": {
+    "ack": 7669,
+    "ece": 0,
+    "fin": 2,
+    "psh": 7300,
+    "rst": 0,
+    "syn": 2,
+    "urg": 0
+   },
+   "tcp_outcome": "established",
+   "total_bytes": 11076636,
+   "total_packets": 7670
+  },
+  "detection_status": "scored",
+  "detection_summary": {
+   "alert_created": true,
+   "alert_due": true,
+   "alert_id": "ALT-E7563A1BD8",
+   "engine_version": "1.0",
+   "entity_key": "addr:10.20.0.16",
+   "entity_kind": "addr",
+   "errors": [],
+   "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+   "flagged": true,
+   "not_evaluated": [
+    "D1",
+    "D10",
+    "D18",
+    "D19",
+    "D2",
+    "D26",
+    "D3",
+    "D4",
+    "D5",
+    "D7",
+    "D9"
+   ],
+   "results": {
+    "D1": {
+     "reason": "Insufficient baseline: 0 prior transfers (< 20).",
+     "status": "not_evaluated"
+    },
+    "D10": {
+     "reason": "Evaluated when the entity's current day closes.",
+     "status": "not_evaluated"
+    },
+    "D12": {
+     "status": "clear"
+    },
+    "D17": {
+     "status": "clear"
+    },
+    "D18": {
+     "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
+     "status": "not_evaluated"
+    },
+    "D19": {
+     "reason": "0/8 connection intervals observed for this destination.",
+     "status": "not_evaluated"
+    },
+    "D2": {
+     "reason": "Destination history warming up (0/200 flows).",
+     "status": "not_evaluated"
+    },
+    "D20": {
+     "evidence": [],
+     "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+     "score": 70.0,
+     "severity": "HIGH",
+     "status": "triggered"
+    },
+    "D21": {
+     "status": "clear"
+    },
+    "D22": {
+     "status": "clear"
+    },
+    "D23": {
+     "status": "clear"
+    },
+    "D24": {
+     "status": "clear"
+    },
+    "D26": {
+     "reason": "No complete ClientHello / JA3 observed for this flow.",
+     "status": "not_evaluated"
+    },
+    "D28": {
+     "status": "clear"
+    },
+    "D3": {
+     "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
+     "status": "not_evaluated"
+    },
+    "D4": {
+     "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
+     "status": "not_evaluated"
+    },
+    "D5": {
+     "reason": "Insufficient upload/download ratio history for this entity.",
+     "status": "not_evaluated"
+    },
+    "D6": {
+     "status": "clear"
+    },
+    "D7": {
+     "reason": "Initialising hourly outbound baseline.",
+     "status": "not_evaluated"
+    },
+    "D8": {
+     "evidence": [],
+     "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+     "score": 20.0,
+     "severity": "LOW",
+     "status": "triggered"
+    },
+    "D9": {
+     "reason": "Evaluated when the entity's current day closes.",
+     "status": "not_evaluated"
+    }
+   },
+   "rule_score": 61.3,
+   "rule_severity": "MEDIUM",
+   "triggered": [
+    "D20",
+    "D8"
+   ]
+  },
+  "device_id": "10.20.0.16",
+  "direction": "outbound",
+  "dst_ip": "198.51.100.23",
+  "dst_port": 3389,
+  "duration_seconds": 15.3707,
+  "entity_key": "addr:10.20.0.16",
+  "event_time": "2025-10-14T06:00:00",
+  "event_type": "network_flow",
+  "event_uuid": "EVT-062D28915FA5",
+  "flow_duration": 15.3707,
+  "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
+  "hybrid_risk": {
+   "ai_risk_score": 100.0,
+   "alert": true,
+   "anomaly_score": 41.24672003,
+   "anomaly_threshold": 0.07018400015809657,
+   "detection_source": "hybrid",
+   "detector_errors": [],
+   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+   "feature_coverage": {
+    "imputed": 14,
+    "imputed_features": [
+     "Fwd Byts/b Avg",
+     "Fwd Pkts/b Avg",
+     "Fwd Blk Rate Avg",
+     "Bwd Byts/b Avg",
+     "Bwd Pkts/b Avg",
+     "Bwd Blk Rate Avg",
+     "Active Mean",
+     "Active Std",
+     "Active Max",
+     "Active Min",
+     "Idle Mean",
+     "Idle Std",
+     "Idle Max",
+     "Idle Min"
+    ],
+    "measured_flow_features": 57,
+    "observed": 64,
+    "total": 78,
+    "zero_by_definition": 0
+   },
+   "final_risk_level": "CRITICAL",
+   "final_risk_score": 100.0,
+   "insufficient_data": [
+    {
+     "detector_id": "D1",
+     "reason": "Insufficient baseline: 0 prior transfers (< 20)."
+    },
+    {
+     "detector_id": "D10",
+     "reason": "Evaluated when the entity's current day closes."
+    },
+    {
+     "detector_id": "D18",
+     "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP."
+    },
+    {
+     "detector_id": "D19",
+     "reason": "0/8 connection intervals observed for this destination."
+    },
+    {
+     "detector_id": "D2",
+     "reason": "Destination history warming up (0/200 flows)."
+    },
+    {
+     "detector_id": "D26",
+     "reason": "No complete ClientHello / JA3 observed for this flow."
+    },
+    {
+     "detector_id": "D3",
+     "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files)."
+    },
+    {
+     "detector_id": "D4",
+     "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7)."
+    },
+    {
+     "detector_id": "D5",
+     "reason": "Insufficient upload/download ratio history for this entity."
+    },
+    {
+     "detector_id": "D7",
+     "reason": "Initialising hourly outbound baseline."
+    },
+    {
+     "detector_id": "D9",
+     "reason": "Evaluated when the entity's current day closes."
+    }
+   ],
+   "is_anomalous": true,
+   "model_reason": null,
+   "model_status": "scored",
+   "policy": "ai_risk = 50\u00b7(score/threshold) below the threshold, 60 + 25\u00b7log2(score/threshold) at or above it (capped at 100); final = noisy-OR(ai_risk, rule_score) over the components that exist; alert when KitNET is anomalous (score > threshold) or the rule layer's alert condition holds",
+   "rule_alert_due": true,
+   "rule_score": 61.3,
+   "rule_severity": "MEDIUM",
+   "rule_status": "evaluated",
+   "top_features": [
+    {
+     "contribution_pct": 71.97,
+     "description": "Fwd PSH Flags = 7300 (observed); 72.0% of the reconstruction error.",
+     "display_name": "Fwd PSH Flags",
+     "feature_name": "Fwd PSH Flags",
+     "input_value": 7300.0,
+     "reconstruction_error": 109664.171875,
+     "training_median": 0.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 17.13,
+     "description": "PSH Flag Cnt = 7300 (observed); 17.1% of the reconstruction error.",
+     "display_name": "PSH Flag Cnt",
+     "feature_name": "PSH Flag Cnt",
+     "input_value": 7300.0,
+     "reconstruction_error": 26101.585938,
+     "training_median": 0.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 6.42,
+     "description": "ACK Flag Cnt = 7669 (observed); 6.4% of the reconstruction error.",
+     "display_name": "ACK Flag Cnt",
+     "feature_name": "ACK Flag Cnt",
+     "input_value": 7669.0,
+     "reconstruction_error": 9788.140625,
+     "training_median": 1.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 2.2,
+     "description": "Subflow Fwd Byts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+     "display_name": "Subflow Fwd Byts",
+     "feature_name": "Subflow Fwd Byts",
+     "input_value": 11052406.0,
+     "reconstruction_error": 3347.007812,
+     "training_median": 60.0,
+     "value_source": "observed"
+    },
+    {
+     "contribution_pct": 2.2,
+     "description": "TotLen Fwd Pkts = 1.10524e+07 (observed); 2.2% of the reconstruction error.",
+     "display_name": "TotLen Fwd Pkts",
+     "feature_name": "TotLen Fwd Pkts",
+     "input_value": 11052406.0,
+     "reconstruction_error": 3347.007812,
+     "training_median": 60.0,
+     "value_source": "observed"
+    }
+   ],
+   "triggered_detectors": [
+    {
+     "baseline": null,
+     "category": "security",
+     "detector_id": "D20",
+     "evidence": [],
+     "evidence_only": false,
+     "group": "destination",
+     "name": "Remote desktop out",
+     "observed": {
+      "entity_key": "addr:10.20.0.16",
+      "org_direction": "outbound",
+      "outbound_bytes": 11052406.0,
+      "protocol": "TCP",
+      "responder": "198.51.100.23",
+      "service_port": 3389
+     },
+     "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
+     "score": 70.0,
+     "severity": "HIGH",
+     "signal_id": "SIG-55C9E477B2D7",
+     "threshold": {
+      "approved_destinations": []
+     }
+    },
+    {
+     "baseline": null,
+     "category": "security",
+     "detector_id": "D8",
+     "evidence": [],
+     "evidence_only": true,
+     "group": "protocol",
+     "name": "Automated transfer",
+     "observed": {
+      "entity_key": "addr:10.20.0.16",
+      "iat_cv": 0.2338,
+      "iat_entropy_bits": 0.0039,
+      "iat_entropy_normalized": 0.001,
+      "iat_histogram": [
+       0,
+       0,
+       7300,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "outbound_bytes": 11052406.0,
+      "outbound_packets": 7303,
+      "size_entropy_normalized": 0.0016,
+      "size_histogram": [
+       0,
+       3,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       7300
+      ]
+     },
+     "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
+     "score": 20.0,
+     "severity": "LOW",
+     "signal_id": "SIG-96166E19A3CA",
+     "threshold": {
+      "max_iat_cv": 0.5,
+      "max_iat_entropy_normalized": 0.35,
+      "min_outbound_bytes": 1048576
+     }
+    }
+   ]
+  },
+  "id": 1,
+  "outcome": null,
+  "packet_count": 7670,
+  "packet_event_count": 0,
+  "packets_in": 367,
+  "packets_out": 7303,
+  "processing_error": null,
+  "processing_status": "complete",
+  "protocol": "TCP",
+  "received_at": "2026-10-16T00:56:54.316129",
+  "source": "pcap",
+  "src_ip": "10.20.0.16",
+  "src_port": 52000,
+  "timestamp": "2025-10-14T06:00:00+00:00",
+  "tls_sni": null,
+  "user": null,
+  "user_id": null
+ }
+}

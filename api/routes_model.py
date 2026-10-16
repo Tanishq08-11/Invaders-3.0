@@ -8,7 +8,6 @@ from flask import Blueprint, request, jsonify
 from config import Config
 from core.models import ModelVersion
 from services.event_processor import EventProcessor
-from services.training_service import TrainingService
 from services.model_adapter import ModelManager
 
 bp_model = Blueprint("model", __name__, url_prefix="/api/v1/model")
@@ -24,7 +23,12 @@ def model_status():
     return jsonify({
         "is_model_loaded": proc.model_loaded,
         "phase": getattr(kitnet, "phase", "active") if kitnet else None,
-        "input_dimension": getattr(kitnet, "input_dim", 100) if kitnet else None,
+        "input_dimension": getattr(kitnet, "input_dim", None) if kitnet else None,
+        "model": "kitnet_trustlab_bundle",
+        "anomaly_threshold": proc.threshold,
+        "feature_names": proc.feature_names,
+        "bundle_sha256": proc.bundle_sha256,
+        "detector": proc.detector_status(),
         "num_clusters": len(getattr(kitnet, "clusters", [])) if kitnet else 0,
         "cluster_sizes": [len(c) for c in getattr(kitnet, "clusters", [])] if kitnet else [],
         "baseline_mean_error": round(getattr(kitnet, "baseline_mean", 0.0), 5) if kitnet else None,
@@ -46,36 +50,9 @@ def trigger_training():
     Triggers baseline training on BoT-IoT normal dataset (or custom uploaded CSV).
     Workflow: Normal Traffic -> Kitsune AfterImage Extractor -> KitNET Training -> Baseline Calibration.
     """
-    data = request.get_json(silent=True) or {}
-    dataset_name = data.get("dataset_name", "botiot_normal_train.csv")
-    csv_path = os.path.join(Config.DATA_DIR, dataset_name)
-    epochs = int(data.get("epochs", 1))
-    max_rows = data.get("max_rows")
-    if max_rows is not None:
-        max_rows = int(max_rows)
-
-    if not os.path.exists(csv_path):
-        return jsonify({"error": f"Training dataset not found: {csv_path}"}), 404
-
-    trainer = TrainingService()
-    try:
-        train_result = trainer.train_baseline_from_csv(
-            csv_path=csv_path,
-            epochs=epochs,
-            max_rows=max_rows
-        )
-        # Reload model into EventProcessor
-        proc = EventProcessor.get_instance()
-        proc.reload_model()
-        if train_result.get("model_version_id"):
-            proc.set_active_model_version(train_result["model_version_id"])
-
-        return jsonify({
-            "message": "KitNET baseline successfully trained and calibrated!",
-            "details": train_result
-        })
-    except Exception as e:
-        return jsonify({"error": f"Training failed: {str(e)}"}), 500
+    # The live detector is the fixed, pre-trained TrustLab bundle; it is never retrained here.
+    return jsonify({"error": "Training is disabled: the live detector is the authoritative pre-trained "
+                             "TrustLab KitNET bundle (ml/kitnet_trustlab_bundle.pkl), which must not be retrained."}), 409
 
 
 @bp_model.route("/thresholds", methods=["POST"])
@@ -110,33 +87,17 @@ def update_thresholds():
 
 @bp_model.route("/features", methods=["GET"])
 def list_features():
-    """Returns the 100 AfterImage feature catalog and active cluster mappings."""
+    """Returns the 78 TrustLab model features (bundle order) and their cluster mapping."""
     proc = EventProcessor.get_instance()
-    feature_names = proc.extractor.get_feature_names()
-    clusters = proc.kitnet.clusters if proc.kitnet else []
-
-    # Map feature index to cluster index
-    cluster_lookup = {}
-    for c_idx, cluster in enumerate(clusters):
-        for f_idx in cluster:
-            cluster_lookup[f_idx] = c_idx
-
-    feature_list = []
-    for idx, name in enumerate(feature_names):
-        info = proc.explanation_engine._lookup_feature_info(name)
-        feature_list.append({
-            "index": idx,
-            "name": name,
-            "display_name": info["display"],
-            "cluster_id": cluster_lookup.get(idx, 0),
-            "description": info["desc"]
-        })
-
-    return jsonify({
-        "total_features": len(feature_list),
-        "total_clusters": len(clusters),
-        "features": feature_list
-    })
+    clusters = getattr(proc.kitnet, "clusters", []) or []
+    cluster_lookup = {f_idx: c_idx for c_idx, cluster in enumerate(clusters) for f_idx in cluster}
+    feature_list = [{
+        "index": idx, "name": name, "display_name": name, "cluster_id": cluster_lookup.get(idx),
+        "training_median": proc.medians.get(name),
+        "description": "Time encoding of the flow start" if name in ("HourSin", "HourCos", "DaySin", "DayCos")
+                       else "CICFlowMeter flow feature",
+    } for idx, name in enumerate(proc.feature_names)]
+    return jsonify({"total_features": len(feature_list), "total_clusters": len(clusters), "features": feature_list})
 
 
 @bp_model.route("/verify", methods=["POST"])

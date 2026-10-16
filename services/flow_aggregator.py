@@ -41,7 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from services.network_metadata import org_orientation
 
-FLAG_NAMES = {"S": "syn", "A": "ack", "F": "fin", "R": "rst", "P": "psh", "U": "urg"}
+FLAG_NAMES = {"S": "syn", "A": "ack", "F": "fin", "R": "rst", "P": "psh", "U": "urg", "E": "ece"}
 CLOSE_GRACE_S = 5.0
 
 
@@ -116,13 +116,20 @@ def histogram_summary(counts, edges) -> Dict[str, Any]:
 
 class _Side:
     """Per-direction statistics (initiator→responder or responder→initiator)."""
-    __slots__ = ("packets", "bytes", "last_ts", "iat", "size_hist", "iat_hist", "payload_packets", "app_hint", "mac")
+    __slots__ = ("packets", "bytes", "last_ts", "iat", "size_hist", "iat_hist", "payload_packets", "app_hint", "mac",
+                 "sizes", "psh", "urg", "header_bytes", "header_packets", "init_window")
 
     def __init__(self):
         self.packets = 0
         self.bytes = 0
         self.last_ts = None
         self.iat = _RunningStats()
+        self.sizes = _RunningStats()
+        self.psh = 0
+        self.urg = 0
+        self.header_bytes = 0
+        self.header_packets = 0      # packets whose header length was reported
+        self.init_window = None      # TCP window of this direction's first packet
         self.size_hist = [0] * (len(SIZE_EDGES_B) + 1)
         self.iat_hist = [0] * (len(IAT_EDGES_S) + 1)
         self.payload_packets = 0
@@ -137,7 +144,16 @@ class _Side:
         self.last_ts = ts if self.last_ts is None else max(self.last_ts, ts)
         self.packets += 1
         self.bytes += size
+        self.sizes.add(size)
         self.size_hist[_bin(size, SIZE_EDGES_B)] += 1
+        flags = meta.get("tcp_flags") or ""
+        self.psh += "P" in flags
+        self.urg += "U" in flags
+        if meta.get("header_bytes") is not None:
+            self.header_bytes += int(meta["header_bytes"])
+            self.header_packets += 1
+        if self.packets == 1 and meta.get("tcp_window") is not None:
+            self.init_window = int(meta["tcp_window"])
         if (meta.get("payload_bytes") or 0) > 0:
             self.payload_packets += 1
             if self.app_hint is None and meta.get("app_hint"):
@@ -151,6 +167,13 @@ class _Side:
             "bytes": self.bytes,
             "payload_packets": self.payload_packets,
             "inter_arrival_s": self.iat.as_dict(6),
+            "inter_arrival_total_s": round(self.iat.mean * self.iat.n, 6) if self.iat.n else None,
+            "packet_size": self.sizes.as_dict(2),
+            "psh_flags": self.psh,
+            "urg_flags": self.urg,
+            # Only defined when every packet of this direction reported its header length.
+            "header_bytes": self.header_bytes if self.packets and self.header_packets == self.packets else None,
+            "init_window": self.init_window,
             "iat_histogram": histogram_summary(self.iat_hist, IAT_EDGES_S),
             "size_histogram": histogram_summary(self.size_hist, SIZE_EDGES_B),
             "app_hint": self.app_hint,

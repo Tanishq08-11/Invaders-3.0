@@ -43,7 +43,6 @@ from api.routes_files   import bp_files, bp_employees
 from services import app_activity
 from services.event_processor import EventProcessor
 from services.live_collector import LiveCollector
-from services.training_service import TrainingService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -145,30 +144,26 @@ def create_app(config_class=Config):
             db.session.rollback()
             print(f"[Bootstrap] Warning: application activity retry failed: {exc}")
 
-        checkpoint = os.path.join(Config.CHECKPOINTS_DIR, "kitnet_baseline.pkl")
-        normal_csv = os.path.join(Config.DATA_DIR, "botiot_normal_train.csv")
-
-        if not os.path.exists(checkpoint) and os.path.exists(normal_csv):
-            print("[Bootstrap] Training KitNET baseline on BoT-IoT normal data…")
-            try:
-                trainer = TrainingService(checkpoint_path=checkpoint)
-                result = trainer.train_baseline_from_csv(normal_csv, epochs=1, max_rows=1200)
-                proc = EventProcessor.get_instance()
-                proc.reload_model()
-                if result.get("model_version_id"):
-                    proc.set_active_model_version(result["model_version_id"])
-                print(f"[Bootstrap] Done — {result['clusters']} clusters, "
-                      f"baseline μ={result['baseline_mean']}")
-            except Exception as e:
-                print(f"[Bootstrap] Warning: {e}")
+        # Authoritative model: the TrustLab bundle, loaded by EventProcessor (no bootstrap training).
+        proc = EventProcessor.get_instance()
+        if proc.model_loaded:
+            from core.models import ModelVersion
+            tag = f"trustlab-{proc.bundle_sha256[:12]}"
+            mv = ModelVersion.query.filter_by(version=tag).first()
+            if mv is None:
+                ModelVersion.query.update({"is_active": False})
+                mv = ModelVersion(version=tag, feature_dimension=len(proc.feature_names),
+                                  num_clusters=len(getattr(proc.kitnet, "clusters", []) or []), dataset_name="kitnet_trustlab_bundle.pkl",
+                                  checkpoint_path=proc.bundle_path, is_active=True)
+                db.session.add(mv)
+                db.session.commit()
+            proc.set_active_model_version(mv.id)
         else:
-            # Model already trained — just load it
-            proc = EventProcessor.get_instance()
-            if proc.model_loaded:
-                from core.models import ModelVersion
-                active = ModelVersion.query.filter_by(is_active=True).first()
-                if active:
-                    proc.set_active_model_version(active.id)
+            print(f"[Bootstrap] Warning: detector unavailable — {proc.model_load_error}")
+
+    # Sweep-based detectors (D11/D25) on a background schedule — one per host, never under TESTING.
+    from services.detection import scheduler as detection_scheduler
+    detection_scheduler.start(app)
 
     return app
 

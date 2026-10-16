@@ -108,11 +108,22 @@ class Config:
 
     # ------------------------------------------------------------------
     # Detector boundary
-    #   kitnet_baseline — the AfterImage(100-D) → KitNET baseline already in this repo.
-    #                     It is NOT the teammate's final model; health reports final_model=false.
+    #   kitnet_trustlab — the authoritative pre-trained TrustLab KitNET bundle
+    #                     (ml/kitnet_trustlab_bundle.pkl, 78 features). Never retrained here.
     #   none            — no inference: events are stored with detection_status="unavailable".
+    # The retired AfterImage(100-D) bootstrap baseline is NOT a selectable backend: if the
+    # bundle cannot be loaded, detection is reported unavailable — there is no fallback.
     # ------------------------------------------------------------------
-    DETECTOR_BACKEND = os.environ.get("DETECTOR_BACKEND", "kitnet_baseline").strip().lower()
+    DETECTOR_BACKEND = os.environ.get("DETECTOR_BACKEND", "kitnet_trustlab").strip().lower()
+    TRUSTLAB_BUNDLE_PATH = os.environ.get("TRUSTLAB_BUNDLE_PATH", os.path.join(BASE_DIR, "ml", "kitnet_trustlab_bundle.pkl"))
+    # Integrity guard: a bundle with a different schema/threshold is refused, not silently used.
+    TRUSTLAB_EXPECTED_FEATURES = 78
+    TRUSTLAB_EXPECTED_THRESHOLD = 0.07018400015809657
+    # Timezone of the HourSin/HourCos/DaySin/DayCos model inputs (defaults to DETECTION_TIMEZONE).
+    TRUSTLAB_TIMEZONE = os.environ.get("TRUSTLAB_TIMEZONE", os.environ.get("DETECTION_TIMEZONE", "UTC"))
+    # An event is only scored when at least this many of the 74 flow features (excluding
+    # ports/protocol) were measured; otherwise it would be scored on training medians.
+    TRUSTLAB_MIN_MEASURED_FEATURES = int(os.environ.get("TRUSTLAB_MIN_MEASURED_FEATURES", 20))
 
     # POST /api/v1/events (external ingestion). When set, callers must send X-Ingest-Key
     # (or hold an ADMIN session). Empty = open, which health reports as "open".
@@ -247,7 +258,8 @@ class Config:
     D24_WINDOW_S = _env_int("D24_WINDOW_S", 86400)
     D24_MIN_STAGES = _env_int("D24_MIN_STAGES", 3)
     D26_MIN_OBSERVATIONS = _env_int("D26_MIN_OBSERVATIONS", 10)
-    TELEMETRY_SWEEP_S = _env_int("TELEMETRY_SWEEP_S", 60)
+    TELEMETRY_SWEEP_S = _env_int("TELEMETRY_SWEEP_S", 60)              # sweep interval (D11/D25); min 10 s
+    DETECTION_SWEEP_ENABLED = _env_bool("DETECTION_SWEEP_ENABLED", True)   # background scheduler (off under TESTING)
     D25_MAX_DROP_RATIO = _env_float("D25_MAX_DROP_RATIO", 0.01)
     D25_MAX_OUTBOX_PENDING = _env_int("D25_MAX_OUTBOX_PENDING", 50)
 

@@ -143,6 +143,8 @@ class Event(db.Model):
     # "addr:<internal ip>", "user:<id>") and a compact per-detector outcome summary.
     entity_key  = db.Column(db.String(96), nullable=True, index=True)
     detection_summary_json = db.Column(db.Text, nullable=True)
+    # Hybrid decision: TrustLab KitNET result + rule results → final risk (ml/risk_engine.hybrid_risk)
+    hybrid_risk_json = db.Column(db.Text, nullable=True)
 
     # Network 5-tuple (encrypted header metadata — payload is NEVER stored).
     # For application events src_ip is the client address seen by the portal server.
@@ -198,6 +200,7 @@ class Event(db.Model):
             "details":          details,
             "entity_key":       self.entity_key,
             "detection_summary": _loads(self.detection_summary_json, None),
+            "hybrid_risk":      _loads(self.hybrid_risk_json, None),
             "tls_sni":          tls.get("sni"),
             "received_at":      self.received_at.isoformat() if self.received_at else None,
             "event_time":       self.event_time.isoformat() if self.event_time else None,
@@ -254,6 +257,7 @@ class Alert(db.Model):
     detection_source = db.Column(db.String(16), nullable=False, default="ai")   # ai | rules | hybrid
     rule_score  = db.Column(db.Float, nullable=True)
     rule_signals_json = db.Column(db.Text, nullable=True)   # [{detector_id, name, severity, score, reason}]
+    hybrid_risk_json = db.Column(db.Text, nullable=True)    # full hybrid decision snapshot (see Event.hybrid_risk_json)
     signal_count = db.Column(db.Integer, nullable=False, default=0)
     event_type  = db.Column(db.String(32), nullable=True)
     entity_key  = db.Column(db.String(96), nullable=True, index=True)
@@ -329,7 +333,14 @@ class Alert(db.Model):
             "anomaly_score":    round(self.anomaly_score, 4) if self.anomaly_score is not None else None,
             "rule_score":       round(self.rule_score, 1) if self.rule_score is not None else None,
             "signal_count":     self.signal_count or 0,
+            "anomaly_threshold": self._hybrid().get("anomaly_threshold"),
+            "model_status":     self._hybrid().get("model_status"),
+            "final_risk_level": self._hybrid().get("final_risk_level"),
         }
+
+    def _hybrid(self):
+        h = _loads(self.hybrid_risk_json, None)
+        return h if isinstance(h, dict) else {}
 
     def to_dict(self):
         evidence = self._parse_json(self.evidence_json)
@@ -356,6 +367,7 @@ class Alert(db.Model):
                 for s in rule_sigs
             ],
             "rule_signals":    rule_sigs,
+            "hybrid_risk":     self._hybrid() or None,
             "analyst_note":    self.analyst_notes,
             "model_version":   self.model_version.version if self.model_version else None,
             "metadata": {
