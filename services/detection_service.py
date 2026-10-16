@@ -1,4 +1,9 @@
 """
+DEPRECATED - legacy AfterImage(100-D) -> bootstrap KitNET path. Used only by the unregistered
+prototype blueprints api/routes_detection.py / api/routes_stats.py. NOT a production inference
+path: production detection is services/event_processor.py -> TrustLab bundle (78 features).
+"""
+"""
 Detection Service for Real-Time Encrypted Traffic Insider Threat Detection
 Coordinates:
 AfterImage Feature Extractor -> KitNET Autoencoder Detector -> Alert & Risk Engine -> Explanation Engine

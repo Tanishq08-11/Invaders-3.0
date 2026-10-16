@@ -1,6 +1,6 @@
 {
  "alert_detail": {
-  "alert_uuid": "ALT-E7563A1BD8",
+  "alert_uuid": "ALT-A76E3DB535",
   "analyst_actions": [],
   "analyst_note": null,
   "analyst_notes": null,
@@ -9,7 +9,7 @@
   "bytes_out": 11052406,
   "bytes_transferred": 11052406,
   "confidence": null,
-  "created_at": "2026-10-16T00:56:54.338086+00:00",
+  "created_at": "2026-10-16T02:25:54.710676+00:00",
   "data_source": "pcap",
   "destination": "198.51.100.23",
   "destination_port": 3389,
@@ -26,7 +26,7 @@
     "ai_error": null,
     "ai_processed": true,
     "alert_id": 1,
-    "anomaly_score": 41.24672,
+    "anomaly_score": 41.246661,
     "bytes_in": 24230,
     "bytes_out": 11052406,
     "bytes_transferred": 11076636,
@@ -254,12 +254,12 @@
     "detection_summary": {
      "alert_created": true,
      "alert_due": true,
-     "alert_id": "ALT-E7563A1BD8",
+     "alert_id": "ALT-A76E3DB535",
      "engine_version": "1.0",
      "entity_key": "addr:10.20.0.16",
      "entity_kind": "addr",
      "errors": [],
-     "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+     "evaluated_at": "2026-10-16T02:25:54.705848+00:00",
      "flagged": true,
      "not_evaluated": [
       "D1",
@@ -276,86 +276,170 @@
      ],
      "results": {
       "D1": {
+       "detector_id": "D1",
+       "name": "Large upload",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Insufficient baseline: 0 prior transfers (< 20).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D10": {
+       "detector_id": "D10",
+       "name": "Sudden behaviour change",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Evaluated when the entity's current day closes.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D12": {
-       "status": "clear"
+       "detector_id": "D12",
+       "name": "Hidden tunnel / personal VPN / Tor",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D17": {
-       "status": "clear"
+       "detector_id": "D17",
+       "name": "DNS tunnelling",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D18": {
+       "detector_id": "D18",
+       "name": "Leak via trusted sites",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D19": {
+       "detector_id": "D19",
+       "name": "Malware beaconing",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "0/8 connection intervals observed for this destination.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D2": {
+       "detector_id": "D2",
+       "name": "Unknown destination",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Destination history warming up (0/200 flows).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D20": {
+       "detector_id": "D20",
        "evidence": [],
+       "name": "Remote desktop out",
+       "outcome": "TRIGGERED",
        "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
        "score": 70.0,
        "severity": "HIGH",
-       "status": "triggered"
+       "status": "triggered",
+       "triggered": true
       },
       "D21": {
-       "status": "clear"
+       "detector_id": "D21",
+       "name": "Unusual protocol tunnel",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D22": {
-       "status": "clear"
+       "detector_id": "D22",
+       "name": "Connection failure anomalies",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D23": {
-       "status": "clear"
+       "detector_id": "D23",
+       "name": "Egress policy violation",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D24": {
-       "status": "clear"
+       "detector_id": "D24",
+       "name": "Multi-stage exfiltration",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D26": {
+       "detector_id": "D26",
+       "name": "TLS fingerprint change",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "No complete ClientHello / JA3 observed for this flow.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D28": {
-       "status": "clear"
+       "detector_id": "D28",
+       "name": "Internal lateral movement",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D3": {
+       "detector_id": "D3",
+       "name": "Unusual country/host",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D4": {
+       "detector_id": "D4",
+       "name": "Unusual time",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D5": {
+       "detector_id": "D5",
+       "name": "Upload-heavy activity",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Insufficient upload/download ratio history for this entity.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D6": {
-       "status": "clear"
+       "detector_id": "D6",
+       "name": "Long upload session",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D7": {
+       "detector_id": "D7",
+       "name": "Slow leaking",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Initialising hourly outbound baseline.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D8": {
+       "detector_id": "D8",
        "evidence": [],
+       "name": "Automated transfer",
+       "outcome": "TRIGGERED",
        "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
        "score": 20.0,
        "severity": "LOW",
-       "status": "triggered"
+       "status": "triggered",
+       "triggered": true
       },
       "D9": {
+       "detector_id": "D9",
+       "name": "Spread-out leaking",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Evaluated when the entity's current day closes.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       }
      },
      "rule_score": 61.3,
@@ -373,17 +457,17 @@
     "entity_key": "addr:10.20.0.16",
     "event_time": "2025-10-14T06:00:00",
     "event_type": "network_flow",
-    "event_uuid": "EVT-062D28915FA5",
+    "event_uuid": "EVT-AE43863B0F41",
     "flow_duration": 15.3707,
     "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
     "hybrid_risk": {
      "ai_risk_score": 100.0,
      "alert": true,
-     "anomaly_score": 41.24672003,
+     "anomaly_score": 41.24666106,
      "anomaly_threshold": 0.07018400015809657,
      "detection_source": "hybrid",
      "detector_errors": [],
-     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246661 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
      "feature_coverage": {
       "imputed": 14,
       "imputed_features": [
@@ -532,13 +616,15 @@
         "responder": "198.51.100.23",
         "service_port": 3389
        },
+       "outcome": "TRIGGERED",
        "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
        "score": 70.0,
        "severity": "HIGH",
-       "signal_id": "SIG-55C9E477B2D7",
+       "signal_id": "SIG-0DCA37B74541",
        "threshold": {
         "approved_destinations": []
-       }
+       },
+       "triggered": true
       },
       {
        "baseline": null,
@@ -585,15 +671,17 @@
          7300
         ]
        },
+       "outcome": "TRIGGERED",
        "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
        "score": 20.0,
        "severity": "LOW",
-       "signal_id": "SIG-96166E19A3CA",
+       "signal_id": "SIG-6A977EB63854",
        "threshold": {
         "max_iat_cv": 0.5,
         "max_iat_entropy_normalized": 0.35,
         "min_outbound_bytes": 1048576
-       }
+       },
+       "triggered": true
       }
      ]
     },
@@ -605,7 +693,7 @@
     "processing_error": null,
     "processing_status": "complete",
     "protocol": "TCP",
-    "received_at": "2026-10-16T00:56:54.316129",
+    "received_at": "2026-10-16T02:25:54.670656",
     "source": "pcap",
     "src_ip": "10.20.0.16",
     "src_port": 52000,
@@ -666,16 +754,16 @@
     "value_source": "observed"
    }
   ],
-  "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+  "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246661 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
   "final_risk_level": "CRITICAL",
   "hybrid_risk": {
    "ai_risk_score": 100.0,
    "alert": true,
-   "anomaly_score": 41.24672003,
+   "anomaly_score": 41.24666106,
    "anomaly_threshold": 0.07018400015809657,
    "detection_source": "hybrid",
    "detector_errors": [],
-   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246661 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
    "feature_coverage": {
     "imputed": 14,
     "imputed_features": [
@@ -824,13 +912,15 @@
       "responder": "198.51.100.23",
       "service_port": 3389
      },
+     "outcome": "TRIGGERED",
      "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
      "score": 70.0,
      "severity": "HIGH",
-     "signal_id": "SIG-55C9E477B2D7",
+     "signal_id": "SIG-0DCA37B74541",
      "threshold": {
       "approved_destinations": []
-     }
+     },
+     "triggered": true
     },
     {
      "baseline": null,
@@ -877,22 +967,24 @@
        7300
       ]
      },
+     "outcome": "TRIGGERED",
      "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
      "score": 20.0,
      "severity": "LOW",
-     "signal_id": "SIG-96166E19A3CA",
+     "signal_id": "SIG-6A977EB63854",
      "threshold": {
       "max_iat_cv": 0.5,
       "max_iat_entropy_normalized": 0.35,
       "min_outbound_bytes": 1048576
-     }
+     },
+     "triggered": true
     }
    ]
   },
   "id": 1,
   "is_external_dst": true,
   "metadata": {
-   "alert_uuid": "ALT-E7563A1BD8",
+   "alert_uuid": "ALT-A76E3DB535",
    "anomaly_score": 41.2467,
    "confidence": null,
    "detection_source": "hybrid",
@@ -961,7 +1053,7 @@
    }
   ],
   "risk_factors": [
-   "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+   "KitNET anomaly score 41.246661 exceeds the trained threshold 0.070184"
   ],
   "risk_score": 100.0,
   "rule_score": 61.3,
@@ -973,7 +1065,7 @@
     "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
     "score": 70.0,
     "severity": "HIGH",
-    "signal_id": "SIG-55C9E477B2D7"
+    "signal_id": "SIG-0DCA37B74541"
    },
    {
     "detector_id": "D8",
@@ -982,7 +1074,7 @@
     "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
     "score": 20.0,
     "severity": "LOW",
-    "signal_id": "SIG-96166E19A3CA"
+    "signal_id": "SIG-6A977EB63854"
    }
   ],
   "scoring_status": "ok",
@@ -991,7 +1083,7 @@
   "signals": [
    {
     "code": "anomaly",
-    "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+    "label": "KitNET anomaly score 41.246661 exceeds the trained threshold 0.070184"
    },
    {
     "code": "D20",
@@ -1009,7 +1101,7 @@
     "ai_error": null,
     "ai_processed": true,
     "alert_id": 1,
-    "anomaly_score": 41.24672,
+    "anomaly_score": 41.246661,
     "bytes_in": 24230,
     "bytes_out": 11052406,
     "bytes_transferred": 11076636,
@@ -1237,12 +1329,12 @@
     "detection_summary": {
      "alert_created": true,
      "alert_due": true,
-     "alert_id": "ALT-E7563A1BD8",
+     "alert_id": "ALT-A76E3DB535",
      "engine_version": "1.0",
      "entity_key": "addr:10.20.0.16",
      "entity_kind": "addr",
      "errors": [],
-     "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+     "evaluated_at": "2026-10-16T02:25:54.705848+00:00",
      "flagged": true,
      "not_evaluated": [
       "D1",
@@ -1259,86 +1351,170 @@
      ],
      "results": {
       "D1": {
+       "detector_id": "D1",
+       "name": "Large upload",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Insufficient baseline: 0 prior transfers (< 20).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D10": {
+       "detector_id": "D10",
+       "name": "Sudden behaviour change",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Evaluated when the entity's current day closes.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D12": {
-       "status": "clear"
+       "detector_id": "D12",
+       "name": "Hidden tunnel / personal VPN / Tor",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D17": {
-       "status": "clear"
+       "detector_id": "D17",
+       "name": "DNS tunnelling",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D18": {
+       "detector_id": "D18",
+       "name": "Leak via trusted sites",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D19": {
+       "detector_id": "D19",
+       "name": "Malware beaconing",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "0/8 connection intervals observed for this destination.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D2": {
+       "detector_id": "D2",
+       "name": "Unknown destination",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Destination history warming up (0/200 flows).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D20": {
+       "detector_id": "D20",
        "evidence": [],
+       "name": "Remote desktop out",
+       "outcome": "TRIGGERED",
        "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
        "score": 70.0,
        "severity": "HIGH",
-       "status": "triggered"
+       "status": "triggered",
+       "triggered": true
       },
       "D21": {
-       "status": "clear"
+       "detector_id": "D21",
+       "name": "Unusual protocol tunnel",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D22": {
-       "status": "clear"
+       "detector_id": "D22",
+       "name": "Connection failure anomalies",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D23": {
-       "status": "clear"
+       "detector_id": "D23",
+       "name": "Egress policy violation",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D24": {
-       "status": "clear"
+       "detector_id": "D24",
+       "name": "Multi-stage exfiltration",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D26": {
+       "detector_id": "D26",
+       "name": "TLS fingerprint change",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "No complete ClientHello / JA3 observed for this flow.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D28": {
-       "status": "clear"
+       "detector_id": "D28",
+       "name": "Internal lateral movement",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D3": {
+       "detector_id": "D3",
+       "name": "Unusual country/host",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D4": {
+       "detector_id": "D4",
+       "name": "Unusual time",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D5": {
+       "detector_id": "D5",
+       "name": "Upload-heavy activity",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Insufficient upload/download ratio history for this entity.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D6": {
-       "status": "clear"
+       "detector_id": "D6",
+       "name": "Long upload session",
+       "outcome": "CLEAR",
+       "status": "clear",
+       "triggered": false
       },
       "D7": {
+       "detector_id": "D7",
+       "name": "Slow leaking",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Initialising hourly outbound baseline.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       },
       "D8": {
+       "detector_id": "D8",
        "evidence": [],
+       "name": "Automated transfer",
+       "outcome": "TRIGGERED",
        "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
        "score": 20.0,
        "severity": "LOW",
-       "status": "triggered"
+       "status": "triggered",
+       "triggered": true
       },
       "D9": {
+       "detector_id": "D9",
+       "name": "Spread-out leaking",
+       "outcome": "INSUFFICIENT_DATA",
        "reason": "Evaluated when the entity's current day closes.",
-       "status": "not_evaluated"
+       "status": "not_evaluated",
+       "triggered": false
       }
      },
      "rule_score": 61.3,
@@ -1356,17 +1532,17 @@
     "entity_key": "addr:10.20.0.16",
     "event_time": "2025-10-14T06:00:00",
     "event_type": "network_flow",
-    "event_uuid": "EVT-062D28915FA5",
+    "event_uuid": "EVT-AE43863B0F41",
     "flow_duration": 15.3707,
     "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
     "hybrid_risk": {
      "ai_risk_score": 100.0,
      "alert": true,
-     "anomaly_score": 41.24672003,
+     "anomaly_score": 41.24666106,
      "anomaly_threshold": 0.07018400015809657,
      "detection_source": "hybrid",
      "detector_errors": [],
-     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+     "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246661 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
      "feature_coverage": {
       "imputed": 14,
       "imputed_features": [
@@ -1515,13 +1691,15 @@
         "responder": "198.51.100.23",
         "service_port": 3389
        },
+       "outcome": "TRIGGERED",
        "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
        "score": 70.0,
        "severity": "HIGH",
-       "signal_id": "SIG-55C9E477B2D7",
+       "signal_id": "SIG-0DCA37B74541",
        "threshold": {
         "approved_destinations": []
-       }
+       },
+       "triggered": true
       },
       {
        "baseline": null,
@@ -1568,15 +1746,17 @@
          7300
         ]
        },
+       "outcome": "TRIGGERED",
        "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
        "score": 20.0,
        "severity": "LOW",
-       "signal_id": "SIG-96166E19A3CA",
+       "signal_id": "SIG-6A977EB63854",
        "threshold": {
         "max_iat_cv": 0.5,
         "max_iat_entropy_normalized": 0.35,
         "min_outbound_bytes": 1048576
-       }
+       },
+       "triggered": true
       }
      ]
     },
@@ -1588,7 +1768,7 @@
     "processing_error": null,
     "processing_status": "complete",
     "protocol": "TCP",
-    "received_at": "2026-10-16T00:56:54.316129",
+    "received_at": "2026-10-16T02:25:54.670656",
     "source": "pcap",
     "src_ip": "10.20.0.16",
     "src_port": 52000,
@@ -1608,11 +1788,11 @@
  "alert_list": {
   "alerts": [
    {
-    "alert_uuid": "ALT-E7563A1BD8",
+    "alert_uuid": "ALT-A76E3DB535",
     "anomaly_score": 41.2467,
     "anomaly_threshold": 0.07018400015809657,
     "bytes_out": 11052406,
-    "created_at": "2026-10-16T00:56:54.338086+00:00",
+    "created_at": "2026-10-16T02:25:54.710676+00:00",
     "data_source": "pcap",
     "destination": "198.51.100.23",
     "destination_port": 3389,
@@ -1632,7 +1812,7 @@
     "signals": [
      {
       "code": "anomaly",
-      "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+      "label": "KitNET anomaly score 41.246661 exceeds the trained threshold 0.070184"
      },
      {
       "code": "D20",
@@ -1651,11 +1831,11 @@
   ],
   "items": [
    {
-    "alert_uuid": "ALT-E7563A1BD8",
+    "alert_uuid": "ALT-A76E3DB535",
     "anomaly_score": 41.2467,
     "anomaly_threshold": 0.07018400015809657,
     "bytes_out": 11052406,
-    "created_at": "2026-10-16T00:56:54.338086+00:00",
+    "created_at": "2026-10-16T02:25:54.710676+00:00",
     "data_source": "pcap",
     "destination": "198.51.100.23",
     "destination_port": 3389,
@@ -1675,7 +1855,7 @@
     "signals": [
      {
       "code": "anomaly",
-      "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+      "label": "KitNET anomaly score 41.246661 exceeds the trained threshold 0.070184"
      },
      {
       "code": "D20",
@@ -1702,11 +1882,11 @@
   "ai_error": null,
   "ai_processed": true,
   "alert": {
-   "alert_uuid": "ALT-E7563A1BD8",
+   "alert_uuid": "ALT-A76E3DB535",
    "anomaly_score": 41.2467,
    "anomaly_threshold": 0.07018400015809657,
    "bytes_out": 11052406,
-   "created_at": "2026-10-16T00:56:54.338086+00:00",
+   "created_at": "2026-10-16T02:25:54.710676+00:00",
    "data_source": "pcap",
    "destination": "198.51.100.23",
    "destination_port": 3389,
@@ -1726,7 +1906,7 @@
    "signals": [
     {
      "code": "anomaly",
-     "label": "KitNET anomaly score 41.246720 exceeds the trained threshold 0.070184"
+     "label": "KitNET anomaly score 41.246661 exceeds the trained threshold 0.070184"
     },
     {
      "code": "D20",
@@ -1743,7 +1923,7 @@
    "status": "open"
   },
   "alert_id": 1,
-  "anomaly_score": 41.24672,
+  "anomaly_score": 41.246661,
   "bytes_in": 24230,
   "bytes_out": 11052406,
   "bytes_transferred": 11076636,
@@ -1972,12 +2152,12 @@
   "detection_summary": {
    "alert_created": true,
    "alert_due": true,
-   "alert_id": "ALT-E7563A1BD8",
+   "alert_id": "ALT-A76E3DB535",
    "engine_version": "1.0",
    "entity_key": "addr:10.20.0.16",
    "entity_kind": "addr",
    "errors": [],
-   "evaluated_at": "2026-10-16T00:56:54.335813+00:00",
+   "evaluated_at": "2026-10-16T02:25:54.705848+00:00",
    "flagged": true,
    "not_evaluated": [
     "D1",
@@ -1994,86 +2174,170 @@
    ],
    "results": {
     "D1": {
+     "detector_id": "D1",
+     "name": "Large upload",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Insufficient baseline: 0 prior transfers (< 20).",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D10": {
+     "detector_id": "D10",
+     "name": "Sudden behaviour change",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Evaluated when the entity's current day closes.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D12": {
-     "status": "clear"
+     "detector_id": "D12",
+     "name": "Hidden tunnel / personal VPN / Tor",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D17": {
-     "status": "clear"
+     "detector_id": "D17",
+     "name": "DNS tunnelling",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D18": {
+     "detector_id": "D18",
+     "name": "Leak via trusted sites",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Destination hostname not observed (no SNI) \u2014 not inferred from the IP.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D19": {
+     "detector_id": "D19",
+     "name": "Malware beaconing",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "0/8 connection intervals observed for this destination.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D2": {
+     "detector_id": "D2",
+     "name": "Unknown destination",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Destination history warming up (0/200 flows).",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D20": {
+     "detector_id": "D20",
      "evidence": [],
+     "name": "Remote desktop out",
+     "outcome": "TRIGGERED",
      "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
      "score": 70.0,
      "severity": "HIGH",
-     "status": "triggered"
+     "status": "triggered",
+     "triggered": true
     },
     "D21": {
-     "status": "clear"
+     "detector_id": "D21",
+     "name": "Unusual protocol tunnel",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D22": {
-     "status": "clear"
+     "detector_id": "D22",
+     "name": "Connection failure anomalies",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D23": {
-     "status": "clear"
+     "detector_id": "D23",
+     "name": "Egress policy violation",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D24": {
-     "status": "clear"
+     "detector_id": "D24",
+     "name": "Multi-stage exfiltration",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D26": {
+     "detector_id": "D26",
+     "name": "TLS fingerprint change",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "No complete ClientHello / JA3 observed for this flow.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D28": {
-     "status": "clear"
+     "detector_id": "D28",
+     "name": "Internal lateral movement",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D3": {
+     "detector_id": "D3",
+     "name": "Unusual country/host",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "GeoIP/ASN data unavailable: No GeoIP database configured (set GEOIP_COUNTRY_DB / GEOIP_ASN_DB to local .mmdb files).",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D4": {
+     "detector_id": "D4",
+     "name": "Unusual time",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Activity profile too short (0 active hours over 0 days; need 40 over 7).",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D5": {
+     "detector_id": "D5",
+     "name": "Upload-heavy activity",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Insufficient upload/download ratio history for this entity.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D6": {
-     "status": "clear"
+     "detector_id": "D6",
+     "name": "Long upload session",
+     "outcome": "CLEAR",
+     "status": "clear",
+     "triggered": false
     },
     "D7": {
+     "detector_id": "D7",
+     "name": "Slow leaking",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Initialising hourly outbound baseline.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     },
     "D8": {
+     "detector_id": "D8",
      "evidence": [],
+     "name": "Automated transfer",
+     "outcome": "TRIGGERED",
      "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
      "score": 20.0,
      "severity": "LOW",
-     "status": "triggered"
+     "status": "triggered",
+     "triggered": true
     },
     "D9": {
+     "detector_id": "D9",
+     "name": "Spread-out leaking",
+     "outcome": "INSUFFICIENT_DATA",
      "reason": "Evaluated when the entity's current day closes.",
-     "status": "not_evaluated"
+     "status": "not_evaluated",
+     "triggered": false
     }
    },
    "rule_score": 61.3,
@@ -2091,17 +2355,17 @@
   "entity_key": "addr:10.20.0.16",
   "event_time": "2025-10-14T06:00:00",
   "event_type": "network_flow",
-  "event_uuid": "EVT-062D28915FA5",
+  "event_uuid": "EVT-AE43863B0F41",
   "flow_duration": 15.3707,
   "flow_id": "ea5a60b5c1c872335cd89ae75d3a94c7",
   "hybrid_risk": {
    "ai_risk_score": 100.0,
    "alert": true,
-   "anomaly_score": 41.24672003,
+   "anomaly_score": 41.24666106,
    "anomaly_threshold": 0.07018400015809657,
    "detection_source": "hybrid",
    "detector_errors": [],
-   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246720 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
+   "explanation": "KitNET (TrustLab 78-feature bundle) score 41.246661 vs threshold 0.070184 (587.69\u00d7) \u2014 ANOMALOUS. Largest reconstruction errors: Fwd PSH Flags, PSH Flag Cnt, ACK Flag Cnt. 14 of 78 model features were not measured and used the bundle's training medians. Rule detectors triggered: [D20 Remote desktop out, HIGH] Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.; [D8 Automated transfer, LOW] Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software. 11 detectors lacked the data/history to evaluate (D1, D10, D18, D19, D2, D26, D3, D4, D5, D7, D9). Alert: AI anomaly corroborated by rule evidence.",
    "feature_coverage": {
     "imputed": 14,
     "imputed_features": [
@@ -2250,13 +2514,15 @@
       "responder": "198.51.100.23",
       "service_port": 3389
      },
+     "outcome": "TRIGGERED",
      "reason": "Outbound TCP/3389 (RDP's registered port) from 10.20.0.16 to external 198.51.100.23, not on the approved list. The port alone does not prove RDP.",
      "score": 70.0,
      "severity": "HIGH",
-     "signal_id": "SIG-55C9E477B2D7",
+     "signal_id": "SIG-0DCA37B74541",
      "threshold": {
       "approved_destinations": []
-     }
+     },
+     "triggered": true
     },
     {
      "baseline": null,
@@ -2303,15 +2569,17 @@
        7300
       ]
      },
+     "outcome": "TRIGGERED",
      "reason": "Machine-regular outbound timing: IAT entropy 0.00 (normalised), CV 0.23 over 7303 packets, 10.54 MB. Also typical of backup/sync software.",
      "score": 20.0,
      "severity": "LOW",
-     "signal_id": "SIG-96166E19A3CA",
+     "signal_id": "SIG-6A977EB63854",
      "threshold": {
       "max_iat_cv": 0.5,
       "max_iat_entropy_normalized": 0.35,
       "min_outbound_bytes": 1048576
-     }
+     },
+     "triggered": true
     }
    ]
   },
@@ -2324,7 +2592,7 @@
   "processing_error": null,
   "processing_status": "complete",
   "protocol": "TCP",
-  "received_at": "2026-10-16T00:56:54.316129",
+  "received_at": "2026-10-16T02:25:54.670656",
   "source": "pcap",
   "src_ip": "10.20.0.16",
   "src_port": 52000,

@@ -162,11 +162,18 @@ class ModelManager:
             }
 
     @staticmethod
-    def hot_swap_teammate_model(model_obj: Any, version_tag: str = "teammate-v1") -> Dict[str, Any]:
+    def hot_swap_teammate_model(model_obj: Any, version_tag: str = "teammate-v1",
+                                replace_authoritative: bool = False) -> Dict[str, Any]:
         """
-        Hot-swaps an external teammate model directly into the live EventProcessor pipeline.
+        Hot-swaps an external model into the live EventProcessor pipeline. The live model is the
+        authoritative TrustLab bundle, so this refuses unless `replace_authoritative=True`, and the
+        replacement must accept the same 78-feature vector. EventProcessor.reload_model() restores
+        the bundle.
         """
-        verification = ModelManager.verify_model(model_obj)
+        if not replace_authoritative:
+            raise PermissionError("Refusing to replace the authoritative TrustLab KitNET bundle "
+                                  "(pass replace_authoritative=True for a deliberate deployment).")
+        verification = ModelManager.verify_model(model_obj, input_dim=78)
         if not verification.get("verified"):
             raise ValueError(f"Cannot deploy unverified model: {verification.get('error')}")
 

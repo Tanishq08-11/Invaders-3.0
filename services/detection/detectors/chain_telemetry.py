@@ -194,7 +194,6 @@ class TelemetryHealth(Detector):
             if st["packets_captured"] == 0 and st.get("uptime_seconds", 0) >= 300:
                 issues.append(("MEDIUM", "interface_silent", f"No packets observed on {st.get('active_interface')} for "
                                                              f"{int(st['uptime_seconds'])} s"))
-        new_errors = st["processing_errors"] - int(prev.get("processing_errors", 0)) if prev.get("run_start") == st.get("uptime_seconds", 0) * 0 + prev.get("run_start") else st["processing_errors"]
         if st["processing_errors"] > int(prev.get("processing_errors", 0)):
             issues.append(("LOW", "processing_errors", f"{st['processing_errors'] - int(prev.get('processing_errors', 0))} new "
                                                        f"processing errors (last: {st.get('last_processing_error')})"))
@@ -203,8 +202,7 @@ class TelemetryHealth(Detector):
             issues.append(("MEDIUM", "outbox_backlog", f"{pending} application events waiting in the outbox"))
         ctx.baselines.set_state("__system__", self.STATE, {"processing_errors": st["processing_errors"]})
         obs = {"collector_mode": st["mode"], "packets_captured": st["packets_captured"], "packets_dropped": st["packets_dropped"],
-               "processing_errors": st["processing_errors"], "outbox_pending": pending, "entity_key": "__system__",
-               "unused_delta": new_errors}
+               "processing_errors": st["processing_errors"], "outbox_pending": pending, "entity_key": "__system__"}
         if not issues:
             return [self.clear("Telemetry pipeline healthy.", observed=obs)]
         return [self.triggered(sev, msg, observed={**obs, "issue": code}, dedup_scope=f"D25:{code}:{hour}")

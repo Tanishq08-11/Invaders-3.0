@@ -152,6 +152,7 @@ class DetectionEngine:
             return self._run(ev, on_alert, create_alert, flagged_hint)
 
     def _run(self, ev: Event, on_alert, create_alert: bool = True, flagged_hint: bool = False) -> Dict[str, Any]:
+        by_id = {d.id: d for d in self.detectors}
         f = EventFeatures.from_event(ev)
         ctx = DetectionContext(ev, f, now=time.time())
         self._resolve_entity(ev, f, ctx)
@@ -195,9 +196,9 @@ class DetectionEngine:
         if alert_due and create_alert:
             alert_dict = self._alert(ev, f, ctx, security, combined, signals, on_alert)
         sig_rows = {s.detector_id: s for s in signals if s.status == SIGNAL_TRIGGERED}
-        by_id = {d.id: d for d in self.detectors}
         triggered = [{
-            "detector_id": k, "name": by_id[k].name, "category": by_id[k].category, "group": by_id[k].group,
+            "detector_id": k, "name": by_id[k].name, "triggered": True, "outcome": "TRIGGERED",
+            "category": by_id[k].category, "group": by_id[k].group,
             "severity": r.severity, "score": r.score, "reason": r.reason, "evidence": list(r.evidence),
             "observed": r.observed, "baseline": r.baseline, "threshold": r.threshold,
             "evidence_only": r.evidence_only,
@@ -209,7 +210,8 @@ class DetectionEngine:
             "evaluated_at": datetime.now(timezone.utc).isoformat(),
             "entity_key": f.entity_key,
             "entity_kind": f.entity_kind,
-            "results": {k: r.summary() for k, r in sorted(ctx.results.items())},
+            "results": {k: {"detector_id": k, "name": by_id[k].name, **r.summary()}
+                        for k, r in sorted(ctx.results.items())},
             "triggered": sorted(k for k, r in ctx.results.items() if r.status == TRIGGERED),
             "not_evaluated": sorted(k for k, r in ctx.results.items() if r.status == NOT_EVALUATED),
             "errors": sorted(k for k, r in ctx.results.items() if r.status == ERROR),

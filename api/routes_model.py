@@ -75,7 +75,9 @@ def update_thresholds():
         risk_engine.z_crit = float(data["z_crit"])
 
     return jsonify({
-        "message": "Detection thresholds updated successfully",
+        "message": ("Legacy z-score thresholds updated. They do NOT affect detection: the TrustLab KitNET "
+                    "decision threshold is fixed by the bundle."),
+        "trustlab_threshold": proc.threshold,
         "thresholds": {
             "z_low": risk_engine.z_low,
             "z_med": risk_engine.z_med,
@@ -132,8 +134,13 @@ def verify_model():
         verification = ModelManager.verify_model(proc.kitnet, input_dim=input_dim)
 
     if deploy and verification.get("verified"):
+        if data.get("replace_authoritative_model") is not True:
+            return jsonify({"verified": True, "deployed": False, "verification": verification,
+                            "error": "The live model is the authoritative TrustLab bundle; deployment requires "
+                                     "replace_authoritative_model=true."}), 409
         if target_path:
-            ModelManager.hot_swap_teammate_model(target_path, version_tag=data.get("version_tag", "teammate-verified"))
+            ModelManager.hot_swap_teammate_model(target_path, version_tag=data.get("version_tag", "teammate-verified"),
+                                                 replace_authoritative=True)
         return jsonify({
             "message": "Model verified and successfully deployed to live pipeline!",
             "verification": verification,
@@ -143,113 +150,59 @@ def verify_model():
     return jsonify(verification), (200 if verification.get("verified") else 422)
 
 
+def _ml_result(model, flow):
+    """One flow through the SAME canonical builder + authoritative bundle the live pipeline uses."""
+    import numpy as np
+    out = model.predict(flow, tz_name=Config.TRUSTLAB_TIMEZONE)
+    fv, errors, score = out["vector"], out["feature_errors"], out["anomaly_score"]
+    top = [{"index": int(i), "name": fv.names[i], "error": round(float(errors[i]), 6),
+            "input_value": round(float(fv.values[i]), 6), "value_source": fv.sources[fv.names[i]]}
+           for i in np.argsort(errors)[::-1][:10] if errors[i] > 0]
+    ratio = score / model.threshold if model.threshold > 0 else 0.0
+    return out, top, ratio, fv
+
+
+def _authoritative_model():
+    from ml.trustlab_adapter import TrustLabKitNET
+    proc = EventProcessor.get_instance()
+    if not proc.model_loaded or not isinstance(proc.kitnet, TrustLabKitNET):
+        return None
+    return proc.kitnet
+
+
 @bp_model.route("/predict", methods=["POST"])
 def predict():
     """
-    Run KitNET anomaly detection on a single network flow.
-    Accepts a JSON flow dict with CICFlowMeter-style feature names.
-    Missing features are imputed with the trained medians.
-
-    Returns:
-      - anomaly_score, threshold, is_anomalous
-      - top_contributing_features (XAI attribution from reconstruction errors)
-      - risk_level (NORMAL / LOW / MEDIUM / HIGH / CRITICAL)
+    Score one CICFlowMeter-named flow with the authoritative TrustLab bundle, through the same
+    canonical 78-feature builder as the live pipeline (unmeasured features -> bundle medians,
+    time features from "Timestamp"). Rule detectors (D1-D28) need entity history and run in the
+    event pipeline (POST /api/v1/events), so they are not evaluated here.
     """
-    from ml.trustlab_adapter import get_trustlab_model
-    import numpy as np
-
-    model = get_trustlab_model()
-    if not model.feature_names:
+    from ml.risk_engine import ai_risk_from_score, risk_level as level_of
+    model = _authoritative_model()
+    if model is None:
         return jsonify({"error": "TrustLab KitNET model not loaded"}), 503
-
     data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"error": "Request body must be a JSON flow object"}), 400
-
-    # Build 78-D feature vector (median-imputed)
-    feat_vec = model.impute(data)
-    score_val, feat_errors = model.score(feat_vec)
-    is_anomalous = model.is_anomalous(score_val)
-
-    # Top contributing features (XAI)
-    top_k = min(10, model.input_dim)
-    top_indices = np.argsort(feat_errors)[-top_k:][::-1]
-    top_features = [
-        {
-            "index": int(idx),
-            "name": model.feature_names[idx],
-            "error": round(float(feat_errors[idx]), 6),
-            "input_value": round(float(feat_vec[idx]), 6),
-        }
-        for idx in top_indices
-        if feat_errors[idx] > 0
-    ]
-
-    # Risk level based on score vs threshold
-    ratio = score_val / model.threshold if model.threshold > 0 else 0.0
-    if ratio < 0.5:
-        risk_level = "NORMAL"
-    elif ratio < 1.0:
-        risk_level = "LOW"
-    elif ratio < 2.0:
-        risk_level = "MEDIUM"
-    elif ratio < 5.0:
-        risk_level = "HIGH"
-    else:
-        risk_level = "CRITICAL"
-
-    # D1-D21 secondary detection layer (independent of 78-D model features)
-    detector_signals = []
-    try:
-        from services.detection.detectors import all_detectors
-        from services.detection.engine import DetectionContext
-        from services.detection.features import EventFeatures
-        from services.detection.base import TRIGGERED
-
-        f = EventFeatures(
-            event_type="network_record",
-            event_uuid="FLOW-PREDICT",
-            ts=float(data.get("Timestamp", data.get("timestamp", 0.0)) or 0.0),
-            src_ip=str(data.get("Src IP", data.get("src_ip", "0.0.0.0"))),
-            dst_ip=str(data.get("Dst IP", data.get("dst_ip", "0.0.0.0"))),
-            src_port=int(data.get("Src Port", data.get("src_port", 0)) or 0),
-            dst_port=int(data.get("Dst Port", data.get("dst_port", 0)) or 0),
-            protocol=str(data.get("Protocol", data.get("protocol", "TCP"))),
-            outbound_bytes=float(data.get("TotLen Fwd Pkts", data.get("bytes", 0)) or 0),
-            inbound_bytes=float(data.get("TotLen Bwd Pkts", 0) or 0),
-            outbound_packets=float(data.get("Tot Fwd Pkts", 1) or 1),
-            inbound_packets=float(data.get("Tot Bwd Pkts", 0) or 0),
-            duration=float(data.get("Flow Duration", 0.0) or 0.0),
-            completed=True,
-        )
-        ctx = DetectionContext(event=None, features=f, now=float(f.ts or 0.0))
-        for det in all_detectors():
-            if "network_record" in det.event_types or "network_flow" in det.event_types:
-                try:
-                    res = det.evaluate(ctx)
-                    if res.status == TRIGGERED:
-                        detector_signals.append({
-                            "detector_id": det.id,
-                            "name": det.name,
-                            "severity": res.severity,
-                            "score": res.score,
-                            "reason": res.reason,
-                        })
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
+    out, top, ratio, fv = _ml_result(model, data)
+    ai_risk = ai_risk_from_score(out["anomaly_score"], model.threshold)
     return jsonify({
-        "anomaly_score": round(score_val, 8),
-        "threshold": round(model.threshold, 8),
-        "is_anomalous": is_anomalous,
-        "risk_level": risk_level,
+        "anomaly_score": round(out["anomaly_score"], 8),
+        "threshold": model.threshold,
+        "is_anomaly": out["is_anomaly"],
+        "is_anomalous": out["is_anomaly"],
+        "risk_level": level_of(ai_risk),
+        "ai_risk_score": ai_risk,
         "score_to_threshold_ratio": round(ratio, 4),
-        "top_contributing_features": top_features,
-        "detector_signals": detector_signals,
-        "detector_count": len(detector_signals),
-        "model": "kitnet_trustlab_bundle",
+        "top_contributing_features": top,
+        "feature_coverage": fv.coverage(),
+        "detector_signals": [],
+        "detector_count": 0,
+        "detector_note": "D1-D28 run in the event pipeline (POST /api/v1/events), which has entity history.",
+        "model": "kitnet_trustlab",
+        "bundle": "kitnet_trustlab_bundle",      # previous value of "model" (compatibility)
+        "feature_count": 78,
         "input_dimension": model.input_dim,
         "clusters": len(model.clusters),
     })
@@ -257,61 +210,53 @@ def predict():
 
 @bp_model.route("/predict/batch", methods=["POST"])
 def predict_batch():
-    """
-    Run KitNET anomaly detection on a batch of network flows.
-    Accepts: {"flows": [<flow_dict>, ...], "limit": 500}
-    Returns per-flow results plus aggregate statistics.
-    """
-    from ml.trustlab_adapter import get_trustlab_model
+    """Batch version of /predict - same builder, same model. {"flows": [...], "limit": 500}."""
     import numpy as np
-
-    model = get_trustlab_model()
-    if not model.feature_names:
+    model = _authoritative_model()
+    if model is None:
         return jsonify({"error": "TrustLab KitNET model not loaded"}), 503
-
     data = request.get_json(silent=True) or {}
     flows = data.get("flows", [])
     if not isinstance(flows, list) or len(flows) == 0:
         return jsonify({"error": "Request body must contain a non-empty 'flows' array"}), 400
-
-    limit = min(int(data.get("limit", 500)), 1000)
-    flows = flows[:limit]
-
-    results = []
-    anomalous_count = 0
-    scores = []
-
-    for flow in flows:
+    try:
+        limit = max(1, min(int(data.get("limit", 500)), 1000))
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
+    results, scores = [], []
+    for flow in flows[:limit]:
         if not isinstance(flow, dict):
             results.append({"error": "Each flow must be a JSON object"})
             continue
-
-        feat_vec = model.impute(flow)
-        score_val, feat_errors = model.score(feat_vec)
-        is_anom = model.is_anomalous(score_val)
-        if is_anom:
-            anomalous_count += 1
-        scores.append(score_val)
-
-        top_3 = np.argsort(feat_errors)[-3:][::-1]
-        top_feats = [
-            {"name": model.feature_names[int(i)], "error": round(float(feat_errors[i]), 6)}
-            for i in top_3 if feat_errors[i] > 0
-        ]
-
-        results.append({
-            "anomaly_score": round(score_val, 8),
-            "is_anomalous": is_anom,
-            "top_features": top_feats,
-        })
-
+        out, top, _, fv = _ml_result(model, flow)
+        scores.append(out["anomaly_score"])
+        results.append({"anomaly_score": round(out["anomaly_score"], 8), "is_anomaly": out["is_anomaly"],
+                        "is_anomalous": out["is_anomaly"], "top_features": top[:3],
+                        "imputed_features": fv.coverage()["imputed"]})
+    anomalous = sum(1 for r in results if r.get("is_anomaly"))
     return jsonify({
-        "total": len(results),
-        "anomalous": anomalous_count,
-        "normal": len(results) - anomalous_count,
-        "threshold": round(model.threshold, 8),
+        "total": len(results), "anomalous": anomalous, "normal": len(scores) - anomalous,
+        "threshold": model.threshold, "model": "kitnet_trustlab", "feature_count": 78,
         "mean_score": round(float(np.mean(scores)), 8) if scores else None,
         "max_score": round(float(np.max(scores)), 8) if scores else None,
         "results": results,
     })
 
+
+@bp_model.route("/health", methods=["GET"])
+def model_health():
+    """Authoritative model status (no filesystem paths)."""
+    from ml.trustlab_adapter import TrustLabKitNET
+    proc = EventProcessor.get_instance()
+    m = proc.kitnet if isinstance(proc.kitnet, TrustLabKitNET) else None
+    loaded = bool(proc.model_loaded and m is not None)
+    return jsonify({
+        "model": "kitnet_trustlab",
+        "loaded": loaded,
+        "feature_count": len(m.feature_names) if m else 0,
+        "threshold": m.threshold if m else None,
+        "fm_grace_period": getattr(m, "fm_grace_period", None),
+        "ad_grace_period": getattr(m, "ad_grace_period", None),
+        "hyperparameters": getattr(m, "hyperparameters", None),
+        "bundle_sha256": proc.bundle_sha256,
+    }), (200 if loaded else 503)

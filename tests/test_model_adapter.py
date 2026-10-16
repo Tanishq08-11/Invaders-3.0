@@ -80,7 +80,10 @@ def test_teammate_model_hot_swapping(client):
         errs = np.ones(len(feat_vec), dtype=np.float32) * 0.085
         return score, errs
 
-    swap_res = ModelManager.hot_swap_teammate_model(teammate_detector, version_tag="teammate-hot-swap-v1")
+    with pytest.raises(PermissionError):      # the authoritative bundle is protected by default
+        ModelManager.hot_swap_teammate_model(teammate_detector)
+    swap_res = ModelManager.hot_swap_teammate_model(teammate_detector, version_tag="teammate-hot-swap-v1",
+                                                    replace_authoritative=True)
     assert swap_res["status"] == "deployed"
     assert swap_res["verification"]["verified"] is True
 
@@ -128,7 +131,8 @@ def test_predict_single_flow(client):
     assert "detector_signals" in data
     assert isinstance(data["detector_signals"], list)
     assert "detector_count" in data
-    assert data["model"] == "kitnet_trustlab_bundle"
+    assert data["model"] == "kitnet_trustlab" and data["bundle"] == "kitnet_trustlab_bundle"
+    assert data["feature_count"] == 78 and data["threshold"] == 0.07018400015809657
 
     # Missing/empty body
     bad_res = client.post("/api/v1/model/predict", data="invalid json", content_type="application/json")

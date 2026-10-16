@@ -92,9 +92,9 @@ def _da_execute(ae, x: np.ndarray) -> Tuple[float, np.ndarray]:
     """
     norm_min = np.asarray(ae.norm_min, dtype=np.float64).ravel()
     norm_max = np.asarray(ae.norm_max, dtype=np.float64).ravel()
-    denom = norm_max - norm_min
-    denom[denom < 1e-10] = 1e-10
-    x_norm = (x - norm_min) / denom
+    # Exactly Mirsky's dA.execute: (x - min) / (max - min + 1e-16). Read-only: no weight or
+    # normaliser update happens here (dA.train is the only method that mutates state).
+    x_norm = (x - norm_min) / (norm_max - norm_min + 0.0000000000000001)
 
     W = np.asarray(ae.W, dtype=np.float64)
     hbias = np.asarray(ae.hbias, dtype=np.float64).ravel()
@@ -109,6 +109,29 @@ def _da_execute(ae, x: np.ndarray) -> Tuple[float, np.ndarray]:
     se = (x_norm - x_hat) ** 2
     rmse = float(np.sqrt(np.mean(se)))
     return rmse, se.astype(np.float32)
+
+
+# The bundle's schema, verified against the original pickle. load_bundle() refuses anything else.
+EXPECTED_FEATURE_ORDER = [
+    "Src Port", "Dst Port", "Protocol", "Flow Duration", "Tot Fwd Pkts", "Tot Bwd Pkts", "TotLen Fwd Pkts",
+    "TotLen Bwd Pkts", "Fwd Pkt Len Max", "Fwd Pkt Len Min", "Fwd Pkt Len Mean", "Fwd Pkt Len Std",
+    "Bwd Pkt Len Max", "Bwd Pkt Len Min", "Bwd Pkt Len Mean", "Bwd Pkt Len Std", "Pkt Len Min", "Pkt Len Max",
+    "Pkt Len Mean", "Pkt Len Std", "Pkt Len Var", "Flow Pkts/s", "Flow Byts/s", "Flow IAT Mean", "Flow IAT Std",
+    "Flow IAT Max", "Flow IAT Min", "Fwd IAT Tot", "Fwd IAT Mean", "Fwd IAT Std", "Fwd IAT Max", "Fwd IAT Min",
+    "Bwd IAT Tot", "Bwd IAT Mean", "Bwd IAT Std", "Bwd IAT Max", "Bwd IAT Min", "Fwd PSH Flags", "Bwd PSH Flags",
+    "Fwd URG Flags", "Bwd URG Flags", "FIN Flag Cnt", "SYN Flag Cnt", "RST Flag Cnt", "PSH Flag Cnt",
+    "ACK Flag Cnt", "URG Flag Cnt", "ECE Flag Cnt", "Down/Up Ratio", "Pkt Size Avg", "Fwd Seg Size Avg",
+    "Bwd Seg Size Avg", "Fwd Header Len", "Bwd Header Len", "Fwd Byts/b Avg", "Fwd Pkts/b Avg",
+    "Fwd Blk Rate Avg", "Bwd Byts/b Avg", "Bwd Pkts/b Avg", "Bwd Blk Rate Avg", "Subflow Fwd Pkts",
+    "Subflow Fwd Byts", "Subflow Bwd Pkts", "Subflow Bwd Byts", "Init Fwd Win Byts", "Init Bwd Win Byts",
+    "Active Mean", "Active Std", "Active Max", "Active Min", "Idle Mean", "Idle Std", "Idle Max", "Idle Min",
+    "HourSin", "HourCos", "DaySin", "DayCos",
+]
+MODEL_ID = "kitnet_trustlab"
+
+
+class BundleSchemaError(ValueError):
+    """The pickle does not match the authoritative 78-feature TrustLab schema."""
 
 
 # ---------------------------------------------------------------------------
@@ -155,14 +178,25 @@ class TrustLabKitNET:
         if not isinstance(bundle, dict) or "model" not in bundle:
             raise ValueError(f"Invalid trustlab bundle: expected dict with 'model' key, got {type(bundle)}")
 
-        self.feature_names = list(bundle["feature_names"])          # 78 names
+        names = list(bundle["feature_names"])
+        if len(names) != 78 or names != EXPECTED_FEATURE_ORDER:
+            raise BundleSchemaError(f"bundle feature_names do not match the 78-feature TrustLab order ({len(names)} names)")
+        if "threshold" not in bundle:
+            raise BundleSchemaError("bundle has no threshold")
+        self.feature_names = names
         self.timestamp_features = list(bundle.get("timestamp_features", []))
         self.metadata_columns = list(bundle.get("metadata_columns", []))
         self.medians = dict(bundle.get("medians", {}))
-        self.threshold = float(bundle.get("threshold", 0.070184))
+        self.threshold = float(bundle["threshold"])                 # the bundle is the source of truth
+        self.fm_grace_period = bundle.get("fm_grace_period")
+        self.ad_grace_period = bundle.get("ad_grace_period")
         self.input_dim = len(self.feature_names)                    # 78
 
         model = bundle["model"]
+        if getattr(model, "n", 78) != 78 or sum(len(c) for c in model.v) != 78:
+            raise BundleSchemaError("KitNET object in the bundle is not 78-dimensional")
+        self.hyperparameters = {k: getattr(model, k, None) for k in ("m", "lr", "hr", "n", "n_trained", "n_executed",
+                                                                      "FM_grace_period", "AD_grace_period")}
         self.clusters = [list(c) for c in model.v]                  # 28 clusters
         self.ensemble = list(model.ensembleLayer)                   # 28 dA objects
         self.output_ae = model.outputLayer                          # 1 dA object
@@ -208,8 +242,32 @@ class TrustLabKitNET:
 
         return float(global_rmse), feature_se
 
+    # ------------------------------------------------------------------ public inference API
+    def score_features(self, features) -> Dict[str, Any]:
+        """Score an already-built 78-D vector (bundle order). Inference only."""
+        x = np.asarray(features, dtype=np.float64).ravel()
+        assert x.shape == (78,), f"TrustLab KitNET needs a (78,) vector, got {x.shape}"
+        score, errors = self.score(x)
+        anomalous = score > self.threshold
+        log.debug("[TrustLabKitNET] features=%d score=%.6f threshold=%.6f anomaly=%s",
+                  x.size, score, self.threshold, anomalous)
+        return {"anomaly_score": score, "threshold": self.threshold, "is_anomaly": bool(anomalous),
+                "feature_errors": errors, "model": MODEL_ID, "feature_count": int(x.size)}
+
+    def predict(self, flow: Dict[str, Any], tz_name: Optional[str] = None) -> Dict[str, Any]:
+        """CICFlowMeter-named flow dict → canonical 78-D vector → score (same builder as the live pipeline)."""
+        from ml.trustlab_features import build_from_cic_record
+        fv = build_from_cic_record(flow, self.feature_names, self.medians, tz_name)
+        out = self.score_features(fv.values)
+        out["vector"] = fv
+        return out
+
+    def predict_batch(self, flows, tz_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        return [self.predict(f, tz_name) for f in flows]
+
     # ------------------------------------------------------------------ helpers
     def impute(self, flow_dict: Dict[str, Any]) -> np.ndarray:
+        """DEPRECATED: median-only imputation without timestamp features. Use predict()."""
         """
         Build the 78-D feature vector from a flow dictionary,
         imputing missing values with the bundle's median.

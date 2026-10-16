@@ -22,6 +22,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 TRIGGERED, CLEAR, NOT_EVALUATED, ERROR = "triggered", "clear", "not_evaluated", "error"
+# Reported outcome per status. not_evaluated = the required telemetry/history is missing; it is
+# never a positive and never a clear.
+OUTCOME = {TRIGGERED: "TRIGGERED", CLEAR: "CLEAR", NOT_EVALUATED: "INSUFFICIENT_DATA", ERROR: "ERROR"}
 SEVERITY_SCORE = {"LOW": 20.0, "MEDIUM": 45.0, "HIGH": 70.0, "CRITICAL": 90.0}
 SEVERITY_ORDER = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
@@ -48,7 +51,8 @@ class DetectorResult:
     detected_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def summary(self) -> Dict[str, Any]:
-        out = {"status": self.status}
+        out = {"status": self.status, "outcome": OUTCOME.get(self.status, self.status.upper()),
+               "triggered": self.status == TRIGGERED}
         if self.status == TRIGGERED:
             out.update(severity=self.severity, score=self.score, reason=self.reason, evidence=list(self.evidence))
         if self.status in (NOT_EVALUATED, ERROR):

@@ -124,6 +124,12 @@ class Config:
     # An event is only scored when at least this many of the 74 flow features (excluding
     # ports/protocol) were measured; otherwise it would be scored on training medians.
     TRUSTLAB_MIN_MEASURED_FEATURES = int(os.environ.get("TRUSTLAB_MIN_MEASURED_FEATURES", 20))
+    # Which observed port fills "Src Port" / "Dst Port" for aggregated flows.
+    #   service_src  Src Port = responder (service) port, Dst Port = initiator (client) port.
+    #                Matches the bundle's own training medians (Src Port 1131, Dst Port 44590.5).
+    #   initiator    Src Port = initiator port (CICFlowMeter's usual orientation).
+    # Fwd/Bwd statistics stay initiator→responder in both modes. Records keep their own columns.
+    TRUSTLAB_PORT_ORIENTATION = os.environ.get("TRUSTLAB_PORT_ORIENTATION", "service_src").strip().lower()
 
     # POST /api/v1/events (external ingestion). When set, callers must send X-Ingest-Key
     # (or hold an ADMIN session). Empty = open, which health reports as "open".

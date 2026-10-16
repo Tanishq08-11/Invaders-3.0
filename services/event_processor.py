@@ -607,7 +607,8 @@ class EventProcessor:
                    "duration": row.flow_duration, "timestamp": start}
         return build_feature_vector(event_type=row.event_type, columns=columns, details=details, raw_record=raw,
                                     feature_names=self.feature_names, medians=self.medians,
-                                    tz_name=Config.TRUSTLAB_TIMEZONE)
+                                    tz_name=Config.TRUSTLAB_TIMEZONE,
+                                    port_orientation=Config.TRUSTLAB_PORT_ORIENTATION)
 
     def _detect(self, row: Event, norm: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Canonical 78-feature vector → TrustLab KitNET → anomaly result. Records the outcome on the row."""
@@ -653,6 +654,9 @@ class EventProcessor:
                     })
                 model.update(status=DETECTION_SCORED, anomaly_score=score, threshold=self.threshold,
                              is_anomalous=score > self.threshold, top_features=top)
+                log.debug("[EventProcessor] %s model=kitnet_trustlab features=%d measured=%d score=%.6f "
+                          "threshold=%.6f anomaly=%s", row.event_uuid, fv.values.size, measured, score,
+                          self.threshold, score > self.threshold)
                 row.feature_vector_json = json.dumps({
                     "schema": DETECTOR_INPUT_SCHEMA, "names": fv.names, "values": fv.values.tolist(),
                     "sources": fv.sources, "imputed_reasons": fv.reasons,
@@ -765,6 +769,9 @@ class EventProcessor:
         db.session.add(alert_row)
         db.session.flush()
         row.alert_id = alert_row.id
+        log.info("[EventProcessor] alert %s event=%s source=%s risk=%s/%s anomaly=%s detectors=%s",
+                 alert_row.alert_uuid, row.event_uuid, hybrid["detection_source"], hybrid["final_risk_score"],
+                 severity, hybrid["is_anomalous"], [e["detector_id"] for e in entries])
         for sig in rules.get("signal_rows") or []:
             if sig.status == "triggered":
                 sig.alert_id = alert_row.id

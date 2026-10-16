@@ -1,4 +1,8 @@
 """
+DEPRECATED - trains the legacy AfterImage(100-D) bootstrap KitNET (demo_pipeline.py only).
+Never loaded by production: the live model is the pre-trained TrustLab bundle, which is not retrained.
+"""
+"""
 Training Service — trains KitNET baseline from normal BoT-IoT data.
 Records the model version in the database for traceability.
 """

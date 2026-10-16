@@ -1,4 +1,8 @@
 """
+DEPRECATED for production - in-repo KitNET used by the legacy bootstrap/training path and its tests.
+Production inference uses ml/trustlab_adapter.py (the authoritative 78-feature bundle).
+"""
+"""
 KitNET Anomaly Detector Architecture
 Mirsky et al., "Kitsune: An Ensemble of Autoencoders for Online Network Intrusion Detection", NDSS 2018.
 

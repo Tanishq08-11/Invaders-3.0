@@ -82,6 +82,42 @@ def _tz(name: Optional[str]):
         return timezone.utc
 
 
+_TS_FORMATS = ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %I:%M:%S %p", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S",
+               "%Y-%m-%d %H:%M:%S.%f", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %I:%M:%S %p")
+
+
+def parse_timestamp(value, tz_name: Optional[str] = None) -> Optional[float]:
+    """
+    One timestamp interpretation for every entry point (live flows, PCAP, records, /model/predict):
+    epoch seconds (or ms), ISO-8601, or CICFlowMeter "dd/mm/YYYY HH:MM:SS". A string without an
+    offset is read in TRUSTLAB_TIMEZONE — the same zone the time features are computed in.
+    """
+    if value is None or value == "":
+        return None
+    v = _num(value)
+    if v is not None:
+        if v > 1e11:          # milliseconds
+            v /= 1000.0
+        return v if v > 0 else None
+    text = str(value).strip()
+    tz = _tz(tz_name)
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        dt = None
+        for fmt in _TS_FORMATS:
+            try:
+                dt = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt.timestamp()
+
+
 def time_features(ts: Optional[float], tz_name: Optional[str] = None) -> Dict[str, Optional[float]]:
     if ts is None or ts <= 0:
         return {"HourSin": None, "HourCos": None, "DaySin": None, "DayCos": None}
@@ -163,11 +199,15 @@ def _side_stats(b: _Builder, prefix: str, side: Dict[str, Any], packets: int, is
         b.missing(f"Init {p} Win Byts", "no TCP window on a non-TCP flow")
 
 
-def _from_flow(b: _Builder, ev_cols: Dict[str, Any], d: Dict[str, Any]):
+def _from_flow(b: _Builder, ev_cols: Dict[str, Any], d: Dict[str, Any], port_orientation: str = "service_src"):
     proto = (ev_cols.get("protocol") or "").upper()
     is_tcp = proto == "TCP"
-    b.obs("Src Port", ev_cols.get("src_port"))
-    b.obs("Dst Port", ev_cols.get("dst_port"))
+    if port_orientation == "initiator":
+        b.obs("Src Port", ev_cols.get("src_port"))
+        b.obs("Dst Port", ev_cols.get("dst_port"))
+    else:   # service_src: the bundle's training data has the service port in "Src Port"
+        b.obs("Src Port", ev_cols.get("dst_port"))
+        b.obs("Dst Port", ev_cols.get("src_port"))
     if proto in PROTOCOL_NUMBERS:
         b.vals["Protocol"], b.src["Protocol"] = float(PROTOCOL_NUMBERS[proto]), OBSERVED
     else:
@@ -248,7 +288,7 @@ def _from_record(b: _Builder, ev_cols: Dict[str, Any], raw: Dict[str, Any], feat
     if "Dst Port" not in b.src:
         b.obs("Dst Port", ev_cols.get("dst_port"))
     if "Protocol" not in b.src:
-        proto = (ev_cols.get("protocol") or "").upper()
+        proto = str(ev_cols.get("protocol") or lookup.get("protocol") or "").upper()
         if proto in PROTOCOL_NUMBERS:
             b.vals["Protocol"], b.src["Protocol"] = float(PROTOCOL_NUMBERS[proto]), OBSERVED
 
@@ -262,17 +302,24 @@ def build_feature_vector(
     feature_names: List[str],
     medians: Dict[str, float],
     tz_name: Optional[str] = None,
+    port_orientation: str = "service_src",
 ) -> FeatureVector:
     """
     columns: src_port, dst_port, protocol, duration, timestamp (epoch seconds of the flow start).
     Produces values in `feature_names` order; anything not observed gets the bundle median.
     """
+    if len(feature_names) != 78 or list(feature_names[-4:]) != ["HourSin", "HourCos", "DaySin", "DayCos"]:
+        raise ValueError(f"TrustLab schema violated: {len(feature_names)} feature names")
     b = _Builder()
+    ts = parse_timestamp(columns.get("timestamp"), tz_name)
     if event_type == "network_flow":
-        _from_flow(b, columns, details or {})
+        _from_flow(b, columns, details or {}, port_orientation)
     else:
         _from_record(b, columns, raw_record or {}, feature_names)
-    for name, v in time_features(_num(columns.get("timestamp")), tz_name).items():
+        if ts is None:
+            lookup = {str(k).strip().lower(): v for k, v in (raw_record or {}).items()}
+            ts = parse_timestamp(lookup.get("timestamp"), tz_name)
+    for name, v in time_features(ts, tz_name).items():
         if v is not None:
             b.vals[name], b.src[name] = v, OBSERVED
         else:
@@ -290,4 +337,17 @@ def build_feature_vector(
             values[i] = float(medians.get(name, 0.0))
             sources[name] = IMPUTED
             reasons[name] = b.reasons.get(name, "not present in this event")
+    assert values.shape == (78,), f"TrustLab feature vector must be (78,), got {values.shape}"
     return FeatureVector(names=list(feature_names), values=values, sources=sources, reasons=reasons)
+
+
+def build_from_cic_record(flow: Dict[str, Any], feature_names: List[str], medians: Dict[str, float],
+                          tz_name: Optional[str] = None) -> FeatureVector:
+    """Entry point for /model/predict(/batch): a CICFlowMeter-named dict, through the same builder."""
+    lookup = {str(k).strip().lower(): v for k, v in flow.items()}
+    columns = {"src_port": lookup.get("src port", lookup.get("src_port")),
+               "dst_port": lookup.get("dst port", lookup.get("dst_port")),
+               "protocol": lookup.get("protocol"),
+               "timestamp": lookup.get("timestamp")}
+    return build_feature_vector(event_type="network_record", columns=columns, details=None, raw_record=flow,
+                                feature_names=feature_names, medians=medians, tz_name=tz_name)
