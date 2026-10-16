@@ -477,6 +477,22 @@ def test_pcap_rejects_invalid_files(app):
     assert bad.status_code == 400 and "pcap" in bad.get_json()["error"].lower()
 
 
+def test_pcap_stop_endpoint_and_cancellation(app):
+    admin = login(app, "admin01")
+    r = admin.post("/api/v1/collector/pcap/stop")
+    assert r.status_code == 200 and r.get_json()["status"] == "not_running"
+
+    collector = LiveCollector.get_instance()
+    collector.is_pcap_processing = True
+    try:
+        r2 = admin.post("/api/v1/collector/pcap/stop")
+        assert r2.status_code == 200 and r2.get_json()["status"] == "stopping"
+        assert collector._pcap_stop_event.is_set()
+    finally:
+        collector.is_pcap_processing = False
+        collector._pcap_stop_event.clear()
+
+
 # ======================================================================= access control
 def test_collector_and_operations_require_admin(app):
     anon, emp, analyst, admin = app.test_client(), login(app, "eng01"), login(app, "analyst01"), login(app, "admin01")

@@ -15,6 +15,7 @@ import {
   patchAlert,
   startCollector,
   stopCollector,
+  stopPcap,
   type CollectorStartRequest,
   type EventFilters,
 } from './endpoints'
@@ -161,8 +162,11 @@ function useCollectorMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResu
 
 export const useStartCollector = () => useCollectorMutation((body: CollectorStartRequest) => startCollector(body))
 export const useStopCollector = () => useCollectorMutation<void, CollectorAction>(() => stopCollector())
+export const useStopPcap = () => useCollectorMutation<void, CollectorAction>(() => stopPcap())
 export const useAnalysePcap = () =>
-  useCollectorMutation(({ file, maxPackets }: { file: File; maxPackets?: number }) => analysePcap(file, maxPackets))
+  useCollectorMutation(({ file, maxPackets, signal }: { file: File; maxPackets?: number; signal?: AbortSignal }) =>
+    analysePcap(file, maxPackets, signal),
+  )
 
 export function useUpdateAlert(id: string) {
   const qc = useQueryClient()

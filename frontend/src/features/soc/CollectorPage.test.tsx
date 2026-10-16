@@ -92,6 +92,21 @@ describe('CollectorPage', () => {
     expect(await screen.findByText(/Backend error \(500\)/, undefined, { timeout: 5000 })).toBeTruthy()
     expect(screen.queryByText('Packets observed')).toBeNull()
   })
+
+  it('provides a stop button for PCAP analysis and sends stop request', async () => {
+    const { calls } = mockBackend([
+      { path: '/api/v1/auth/me', body: user('ADMIN') },
+      { path: '/api/v1/collector/status', body: collectorStatus({ is_pcap_processing: true }) },
+      { path: '/api/v1/collector/interfaces', body: interfaces },
+      { path: '/api/v1/health', body: health() },
+      { method: 'POST', path: '/api/v1/collector/pcap/stop', body: { status: 'stopping', message: 'PCAP analysis stop requested.' } },
+    ])
+    renderWithProviders(<CollectorPage />)
+    const stopBtn = await screen.findByRole('button', { name: /Stop PCAP analysis/i })
+    expect((stopBtn as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(stopBtn)
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/v1/collector/pcap/stop')).toBe(true))
+  })
 })
 
 describe('EventLogPage', () => {

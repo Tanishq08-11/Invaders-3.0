@@ -289,6 +289,7 @@ export const collectorStatusSchema = z.object({
   is_running: z.boolean(),
   is_live: z.boolean(),
   is_simulated: z.boolean(),
+  is_pcap_processing: z.boolean().nullish(),
   source: str,
   active_interface: str,
   bpf_filter: str,
@@ -337,6 +338,7 @@ export const pcapResultSchema = z.object({
   status: z.string(),
   file: str,
   error: str,
+  message: str,
   total_packets: num,
   packets_parsed: num,
   malformed_packets: num,
@@ -348,6 +350,7 @@ export const pcapResultSchema = z.object({
   processing_errors: num,
   tls_handshakes: num,
   truncated_at_limit: z.boolean().nullish(),
+  stopped_by_user: z.boolean().nullish(),
   zeek: z.object({ available: z.boolean(), tls_records: num, error: str }).nullish(),
 })
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, FlaskConical, Loader2, Lock, Play, Radar, Square, Upload } from 'lucide-react'
 import {
@@ -8,6 +8,7 @@ import {
   useHealth,
   useStartCollector,
   useStopCollector,
+  useStopPcap,
 } from '@/api/queries'
 import { useLiveStatus } from '@/api/live'
 import { ApiError } from '@/api/client'
@@ -166,20 +167,70 @@ function CaptureControls({ status, operator }: { status: CollectorStatus; operat
   )
 }
 
-function PcapPanel({ operator, last }: { operator: boolean; last?: Record<string, unknown> | null }) {
+function PcapPanel({
+  operator,
+  last,
+  isCollectorPcapProcessing,
+}: {
+  operator: boolean
+  last?: Record<string, unknown> | null
+  isCollectorPcapProcessing?: boolean
+}) {
   const analyse = useAnalysePcap()
+  const stopPcap = useStopPcap()
   const [file, setFile] = useState<File | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const isRunning = analyse.isPending || !!isCollectorPcapProcessing
+  const isStopping = stopPcap.isPending
   const result: PcapResult | Record<string, unknown> | null | undefined = analyse.data ?? last
+
+  const handleAnalyse = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file || isRunning) return
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    analyse.mutate(
+      { file, signal: controller.signal },
+      {
+        onSettled: () => {
+          abortControllerRef.current = null
+        },
+        onError: (err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            toast.info('PCAP analysis stopped by user.')
+          }
+        },
+        onSuccess: (res) => {
+          if (res.status === 'stopped' || res.stopped_by_user) {
+            toast.info('PCAP analysis stopped.')
+          } else {
+            toast.success(`Analysis finished: ${formatNumber(res.total_packets)} packets processed.`)
+          }
+        },
+      },
+    )
+  }
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    stopPcap.mutate(undefined, {
+      onSuccess: () => {
+        toast.info('PCAP analysis stopped.')
+      },
+      onError: (err) => {
+        toast.error(`Failed to stop PCAP: ${errorText(err)}`)
+      },
+    })
+  }
+
   return (
     <Panel title="Offline PCAP analysis" subtitle="Same metadata → flow → event path as live capture; events are labelled “pcap”">
       {operator ? (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (file) analyse.mutate({ file })
-          }}
-        >
+        <form className="flex flex-wrap items-end gap-2" onSubmit={handleAnalyse}>
           <label className="text-xs text-muted-foreground">
             Capture file (.pcap, .pcapng)
             <input
@@ -187,30 +238,70 @@ function PcapPanel({ operator, last }: { operator: boolean; last?: Record<string
               accept=".pcap,.pcapng,.cap"
               className="mt-1 block text-xs file:mr-2 file:rounded-md file:border file:border-border file:bg-raised file:px-2 file:py-1"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              disabled={isRunning}
             />
           </label>
-          <Button type="submit" variant="outline" disabled={!file || analyse.isPending}>
-            {analyse.isPending ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-            Analyse
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" variant="outline" disabled={!file || isRunning}>
+              {isRunning ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              Analyse
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleStop}
+              disabled={!isRunning || isStopping}
+              aria-label="Stop PCAP analysis"
+            >
+              {isStopping ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
+              Stop
+            </Button>
+          </div>
         </form>
       ) : (
         <p className="text-xs text-muted-foreground">PCAP analysis requires an administrator account.</p>
       )}
-      {analyse.isError && <p role="alert" className="mt-3 text-xs text-sev-critical">Analysis failed: {errorText(analyse.error)}</p>}
+
+      {isRunning && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+          <Loader2 className="size-3.5 animate-spin shrink-0 text-amber-600" />
+          <span>Processing PCAP packets and streaming events into SOC telemetry. Click <strong>Stop</strong> to halt at any point.</span>
+        </div>
+      )}
+
+      {analyse.isError && !(analyse.error instanceof DOMException && analyse.error.name === 'AbortError') && (
+        <p role="alert" className="mt-3 text-xs text-sev-critical">Analysis failed: {errorText(analyse.error)}</p>
+      )}
+
       {result && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 text-sm sm:grid-cols-3">
-          <Row k="File" v={String(result.file ?? '—')} />
-          <Row k="Status" v={String(result.status ?? '—')} />
-          <Row k="Packets read" v={formatNumber(result.total_packets as number)} />
-          <Row k="Malformed" v={formatNumber(result.malformed_packets as number)} />
-          <Row k="Events stored" v={formatNumber(result.events_ingested as number)} />
-          <Row k="Flows" v={formatNumber(result.flow_events as number)} />
-          <Row k="TLS handshakes" v={formatNumber(result.tls_handshakes as number)} />
-          <Row k="Alerts" v={formatNumber(result.threats_detected as number)} />
-          <Row k="Errors" v={formatNumber(result.processing_errors as number)} />
-          {typeof result.error === 'string' && <Row k="Error" v={result.error} />}
-        </dl>
+        <>
+          {(result.status === 'stopped' || result.stopped_by_user) && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 font-medium">
+              Analysis was stopped before file completion. Showing partial metrics collected prior to stop.
+            </div>
+          )}
+          <dl className="mt-3 grid grid-cols-2 gap-x-6 text-sm sm:grid-cols-3">
+            <Row k="File" v={String(result.file ?? '—')} />
+            <Row
+              k="Status"
+              v={
+                result.status === 'stopped' || result.stopped_by_user ? (
+                  <span className="font-semibold text-amber-600">Stopped</span>
+                ) : (
+                  String(result.status ?? '—')
+                )
+              }
+            />
+            <Row k="Packets read" v={formatNumber(result.total_packets as number)} />
+            <Row k="Malformed" v={formatNumber(result.malformed_packets as number)} />
+            <Row k="Events stored" v={formatNumber(result.events_ingested as number)} />
+            <Row k="Flows" v={formatNumber(result.flow_events as number)} />
+            <Row k="TLS handshakes" v={formatNumber(result.tls_handshakes as number)} />
+            <Row k="Alerts" v={formatNumber(result.threats_detected as number)} />
+            <Row k="Errors" v={formatNumber(result.processing_errors as number)} />
+            {typeof result.error === 'string' && <Row k="Error" v={result.error} />}
+          </dl>
+        </>
       )}
     </Panel>
   )
@@ -293,7 +384,7 @@ export function CollectorPage() {
           </Panel>
 
           <div className="mt-4">
-            <PcapPanel operator={operator} last={s.last_pcap} />
+            <PcapPanel operator={operator} last={s.last_pcap} isCollectorPcapProcessing={s.is_pcap_processing ?? false} />
           </div>
           {!operator && (
             <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">

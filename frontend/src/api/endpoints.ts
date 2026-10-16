@@ -114,10 +114,13 @@ export const startCollector = (body: CollectorStartRequest): Promise<CollectorAc
 export const stopCollector = (): Promise<CollectorAction> =>
   request(`${API}/collector/stop`, { method: 'POST', body: {}, schema: collectorActionSchema })
 
-export function analysePcap(file: File, maxPackets?: number): Promise<PcapResult> {
+export const stopPcap = (): Promise<CollectorAction> =>
+  request(`${API}/collector/pcap/stop`, { method: 'POST', body: {}, schema: collectorActionSchema })
+
+export function analysePcap(file: File, maxPackets?: number, signal?: AbortSignal): Promise<PcapResult> {
   const form = new FormData()
   form.append('file', file)
   if (maxPackets) form.append('max_packets', String(maxPackets))
   // 422 still carries a parse summary (partial results up to the corrupt packet).
-  return request(`${API}/collector/pcap`, { method: 'POST', body: form, schema: pcapResultSchema, acceptStatus: [422] })
+  return request(`${API}/collector/pcap`, { method: 'POST', body: form, schema: pcapResultSchema, acceptStatus: [422], signal })
 }

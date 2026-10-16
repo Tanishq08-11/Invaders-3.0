@@ -76,6 +76,11 @@ def stop_capture():
     return jsonify(LiveCollector.get_instance().stop_capture())
 
 
+@bp_collector.route("/pcap/stop", methods=["POST"])
+def stop_pcap():
+    return jsonify(LiveCollector.get_instance().stop_pcap())
+
+
 @bp_collector.route("/pcap", methods=["POST"])
 def process_pcap():
     """

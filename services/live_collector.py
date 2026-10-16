@@ -112,6 +112,8 @@ class LiveCollector:
         self._worker: Optional[threading.Thread] = None
         self._queue: "queue.Queue" = queue.Queue(maxsize=Config.COLLECTOR_QUEUE_SIZE)
         self._stop_event = threading.Event()
+        self._pcap_stop_event = threading.Event()
+        self.is_pcap_processing: bool = False
         self._ingest_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
         self.packet_events_enabled = Config.COLLECTOR_PACKET_EVENTS
         self.aggregator = self._new_aggregator()
@@ -497,9 +499,18 @@ class LiveCollector:
         self._capture_thread = threading.Thread(target=_worker, name="collector-simulation", daemon=True)
         self._capture_thread.start()
 
+    def stop_pcap(self) -> Dict[str, Any]:
+        """Signal any running PCAP analysis to stop gracefully."""
+        if self.is_pcap_processing:
+            self._pcap_stop_event.set()
+            return {"status": "stopping", "message": "PCAP analysis stop requested."}
+        return {"status": "not_running", "message": "No PCAP analysis is currently running."}
+
     def stop_capture(self) -> Dict[str, Any]:
         """Stop capture/simulation, drain queued packets and flush every open flow."""
         with self._state_lock:
+            if self.is_pcap_processing:
+                self._pcap_stop_event.set()
             if self.mode not in _ACTIVE_MODES and not self.is_running:
                 prev = self.mode
                 # A capture that FAILED mid-run may still hold queued packets and open flows.
@@ -599,9 +610,16 @@ class LiveCollector:
         samples: List[Dict[str, Any]] = []
         error = None
         limit = max_packets or int(self._cfg("MAX_PCAP_PACKETS"))
+        self._pcap_stop_event.clear()
+        self.is_pcap_processing = True
+        stopped_by_user = False
         try:
             with PcapReader(pcap_path) as reader:
                 for pkt in reader:
+                    if self._pcap_stop_event.is_set():
+                        stopped_by_user = True
+                        logger.info("PCAP processing stopped by user request.")
+                        break
                     if total >= limit:
                         break
                     total += 1
@@ -623,7 +641,10 @@ class LiveCollector:
                         self._emit_flows(completed, SOURCE_PCAP, stats, enrich)
         except Exception as exc:
             error = f"Failed to parse PCAP file: {type(exc).__name__}"
-        # Flows built from packets read so far are real observations even after a parse error.
+        finally:
+            self.is_pcap_processing = False
+
+        # Flows built from packets read so far are real observations even after a parse error or user stop.
         remaining = aggregator.flush("pcap_end")
         if auto_ingest:
             self._emit_flows(remaining, SOURCE_PCAP, stats, enrich)
@@ -631,12 +652,13 @@ class LiveCollector:
             stats["flows"] = aggregator.flows_emitted
 
         summary = {
-            "status": "error" if error else "completed",
+            "status": "stopped" if stopped_by_user else ("error" if error else "completed"),
             "file": os.path.basename(pcap_path),
             "total_packets": total,
             "packets_parsed": parsed,
             "malformed_packets": malformed,
             "truncated_at_limit": total >= limit,
+            "stopped_by_user": stopped_by_user,
             "events_ingested": stats["events_ingested"],
             "packet_events": stats["packet_events"],
             "flow_events": stats["flow_events"],
@@ -648,6 +670,8 @@ class LiveCollector:
             "sample_metadata": samples,
             "processed_at": time.time(),
         }
+        if stopped_by_user:
+            summary["message"] = f"PCAP analysis stopped by user. Processed {total} packets before stopping."
         if error:
             summary["error"] = error
         if stats["last_error"]:
@@ -668,6 +692,7 @@ class LiveCollector:
             "mode":                    self.mode,
             "is_running":              running,
             "is_capturing":            running,
+            "is_pcap_processing":      getattr(self, "is_pcap_processing", False),
             "is_live":                 self.mode == MODE_LIVE,
             "is_simulated":            self.mode == MODE_SIMULATION,
             "source":                  self.source if running else None,
